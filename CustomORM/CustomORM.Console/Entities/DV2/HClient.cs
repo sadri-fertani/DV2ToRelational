@@ -5,10 +5,10 @@ using CustomORM.Abstractions;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace CustomORM.Core.Entities;
+namespace CustomORM.Console.Entities.DV2;
 
 [Table("h_client")]
-public partial class HClient : IHub, IAuditLoadInformations
+public partial class HClient
 {
     public HClient()
     {
@@ -20,19 +20,19 @@ public partial class HClient : IHub, IAuditLoadInformations
     [Key]
     [Column("h_client_hk")]
     [StringLength(64)]
-    public string KeyHk { get; set; }
+    public string HClientHk { get; set; }
 
     [Column("h_load_dts")]
-    public DateTime LoadDts { get; set; } = DateTime.Now;
+    public DateTime HLoadDts { get; set; }
 
     [Column("h_load_user")]
-    public string LoadUser { get; set; } = Environment.UserName;
+    public string HLoadUser { get; set; }
 
     [Column("h_load_src")]
-    public string LoadSrc { get; set; } = AppDomain.CurrentDomain.FriendlyName;
+    public string HLoadSrc { get; set; }
 
     [Column("no_client")]
-    public int FunctionnalKey { get; set; }
+    public int NoClient { get; set; }
 
     [InverseProperty("HClientHkNavigation")]
     public virtual ICollection<PClient> PClients { get; set; }

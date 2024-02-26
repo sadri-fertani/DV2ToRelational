@@ -132,7 +132,7 @@ namespace PocDapper
                             {
                                 Console.WriteLine($"New Client '{noClient}/{clientHk}' inserted.");
 
-                                // Insert into sattelite s_client_adresse
+                                // Insert into Satellite s_client_adresse
                                 string requestInsertHubAdresse = @"
                                 INSERT INTO [dbo].[s_client_adresse]
 			                                 VALUES
@@ -169,9 +169,9 @@ namespace PocDapper
 
                                 if (!rowsAffected.Equals(0))
                                 {
-                                    Console.WriteLine($"Sattelite 1 Adresse for Client '{noClient}/{clientHk}' inserted.");
+                                    Console.WriteLine($"Satellite 1 Adresse for Client '{noClient}/{clientHk}' inserted.");
 
-                                    // Insert into sattelite s_client_identification
+                                    // Insert into Satellite s_client_identification
                                     string requestInsertHubIdentification = @"
                                         INSERT INTO [dbo].[s_client_identification]
 			                             VALUES
@@ -206,7 +206,7 @@ namespace PocDapper
 
                                     if (!rowsAffected.Equals(0))
                                     {
-                                        Console.WriteLine($"Sattelite 2 Identification for Client '{noClient}/{clientHk}' inserted.");
+                                        Console.WriteLine($"Satellite 2 Identification for Client '{noClient}/{clientHk}' inserted.");
 
                                         // Insert into pit p_client
                                         string requestInsertPit = @"
@@ -247,14 +247,14 @@ namespace PocDapper
                                     }
                                     else
                                     {
-                                        Log.Error($"Sattelite 2 Identification for Client '{noClient}/{clientHk}' not inserted.");
-                                        Console.WriteLine($"Sattelite 2 Identification for Client '{noClient}/{clientHk}' not inserted.");
+                                        Log.Error($"Satellite 2 Identification for Client '{noClient}/{clientHk}' not inserted.");
+                                        Console.WriteLine($"Satellite 2 Identification for Client '{noClient}/{clientHk}' not inserted.");
                                     }
                                 }
                                 else
                                 {
-                                    Log.Error($"Sattelite 1 Adresse for Client '{noClient}/{clientHk}' not inserted.");
-                                    Console.WriteLine($"Sattelite 1 Adresse for Client '{noClient}/{clientHk}' not inserted.");
+                                    Log.Error($"Satellite 1 Adresse for Client '{noClient}/{clientHk}' not inserted.");
+                                    Console.WriteLine($"Satellite 1 Adresse for Client '{noClient}/{clientHk}' not inserted.");
                                 }
                             }
                             else
@@ -418,18 +418,18 @@ namespace PocDapper
                             // Insertion dans la table cible
 
                             // exemple : 		FullName : "PocDapper.Entites.DV.SClientIdentification"
-                            var sattelite = Activator.CreateInstance(Type.GetType(prop.PropertyType.GenericTypeArguments.First().FullName!)!);
+                            var Satellite = Activator.CreateInstance(Type.GetType(prop.PropertyType.GenericTypeArguments.First().FullName!)!);
 
                             // Load from Dto
-                            ChargerSatellite(sattelite!, hc, dto, namespaceOfEntite);
+                            ChargerSatellite(Satellite!, hc, dto, namespaceOfEntite);
 
                             // load from Hub
-                            SetObjectProperty("HClientHk", hc.HClientHk, sattelite!);
+                            SetObjectProperty("HClientHk", hc.HClientHk, Satellite!);
 
                             // complete as Sat
-                            (sattelite as ISattelite)!.SLoadDts = LoadDts;
-                            (sattelite as ISattelite)!.SLoadUser = LoadUser;
-                            (sattelite as ISattelite)!.SLoadSrc = LoadSrc;
+                            (Satellite as ISatellite)!.SLoadDts = LoadDts;
+                            (Satellite as ISatellite)!.SLoadUser = LoadUser;
+                            (Satellite as ISatellite)!.SLoadSrc = LoadSrc;
 
                             // Insert into db
                             string requestInsertSat = string.Empty;
@@ -445,7 +445,7 @@ namespace PocDapper
 
                             var rowsSatAffected = connection.Execute(
                                 requestInsertSat,
-                                sattelite);
+                                Satellite);
                         }
                         else
                         {
@@ -502,19 +502,19 @@ namespace PocDapper
                 null;
         }
 
-        static void ChargerSatellite(object sattelite, object hc, object dto, string namespaceOfEntite)
+        static void ChargerSatellite(object Satellite, object hc, object dto, string namespaceOfEntite)
         {
-            dynamic dynSat = sattelite;
+            dynamic dynSat = Satellite;
             dynamic dynDto = dto;
 
-            foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(sattelite))
+            foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(Satellite))
             {
                 if (!prop.PropertyType.FullName!.Contains(namespaceOfEntite))
                 {
                         SetObjectProperty(
                             prop.Name,
                             GetObjectProperty(prop.Name, dynDto), 
-                            sattelite);
+                            Satellite);
                 }
             }
         }

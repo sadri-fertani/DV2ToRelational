@@ -1,4 +1,6 @@
-using CustomORM.Console.Entities;
+using CustomORM.Abstractions;
+using CustomORM.Console.Entities.DV2;
+using CustomORM.Console.Entities.Relationals;
 using CustomORM.Core;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
@@ -55,7 +57,7 @@ public class Program
         using (var connection = new SqlConnection(Config!.GetConnectionString("Default")))
         {
             // Create repository
-            var repo = new Repository<Client>(connection);
+            var repo = new Repository<Client, HClient, SClientAdresse>(connection);
             repo.Insert(ref c);
         }
 

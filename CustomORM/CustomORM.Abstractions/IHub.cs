@@ -2,7 +2,9 @@
 
 public interface IHub
 {
-    public string? KeyHk { get; set; }
+    public DateTime HLoadDts { get; set; }
 
-    public int FunctionnalKey { get; set; }
+    public string? HLoadUser { get; set; }
+
+    public string? HLoadSrc { get; set; }
 }

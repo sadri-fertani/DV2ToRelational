@@ -4,7 +4,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace CustomORM.Core.Entities;
+namespace CustomORM.Console.Entities.DV2;
 
 public partial class VClient
 {

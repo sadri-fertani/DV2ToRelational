@@ -3,7 +3,7 @@ using System.Text;
 
 namespace CustomORM.Core.Extensions
 {
-    public static class Cryptography
+    public static class CryptographyExtensions
     {
         public static string ToSha256<T>(this T value)
         {

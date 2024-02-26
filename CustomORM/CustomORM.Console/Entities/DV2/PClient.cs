@@ -3,7 +3,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace CustomORM.Core.Entities;
+namespace CustomORM.Console.Entities.DV2;
 
 [Table("p_client")]
 public partial class PClient

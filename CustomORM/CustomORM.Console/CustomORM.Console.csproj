@@ -18,6 +18,12 @@
 	<ItemGroup>
 	  <ProjectReference Include="..\CustomORM.Core\CustomORM.Core.csproj" />
 	</ItemGroup>
+
+	<ItemGroup>
+	  <Compile Update="Entities\DV2\SClientAdresse.cs">
+	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+	  </Compile>
+	</ItemGroup>
 	
 	<ItemGroup>
 		<None Update="appsettings.json">

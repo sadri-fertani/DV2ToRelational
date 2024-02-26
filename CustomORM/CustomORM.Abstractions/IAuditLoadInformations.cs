@@ -1,9 +1,9 @@
 ﻿namespace CustomORM.Abstractions
 {
-    public interface IAuditLoadInformations
+    public interface IHubAuditLoadInformations
     {
-        public DateTime LoadDts { get; set; }
-        public string LoadUser { get; set; }
-        public string LoadSrc { get; set; }
+        public DateTime HLoadDts { get; set; }
+        public string HLoadUser { get; set; }
+        public string HLoadSrc { get; set; }
     }
 }
