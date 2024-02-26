@@ -57,14 +57,25 @@ public class Program
         using (var connection = new SqlConnection(Config!.GetConnectionString("Default")))
         {
             // Create repository
-            var repo = new Repository<Client, HClient, SClientAdresse>(connection);
+            var repo = new Repository<Client, HClient>(connection);
+            
+            // get all
+            var clients = repo.GetAll();
+
+            System.Console.WriteLine("------------------------------");
+            foreach (var client in clients)
+            {
+                System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1}");
+            }
+            System.Console.WriteLine("------------------------------");
+
+            // insert
             repo.Insert(ref c);
+
+            System.Console.WriteLine("------------------------------");
+            System.Console.WriteLine($"{c.NoClient} - {c.Nom} {c.Prenom}");
+            System.Console.WriteLine($"-----------------------------");
         }
-
-        System.Console.WriteLine("------------------------------");
-        System.Console.WriteLine($"{c.NoClient} - {c.Nom} {c.Prenom}");
-        System.Console.WriteLine($"-----------------------------");
-
         // Close and flush logger
         Log.CloseAndFlush();
     }

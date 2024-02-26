@@ -12,7 +12,7 @@ using System.Reflection;
 
 namespace CustomORM.Core
 {
-    public sealed class Repository<TEntityRelationnal, THub, TSatellite1> : IRepository<TEntityRelationnal, THub>
+    public sealed class Repository<TEntityRelationnal, THub> : IRepository<TEntityRelationnal, THub>
         where TEntityRelationnal : class, new()
         where THub : class, new()
     {
@@ -94,6 +94,13 @@ namespace CustomORM.Core
 
             // Inject functional key into entity
             SpyIL.SetFunctionnalKey<TEntityRelationnal>(ref entity, getNewId);
+        }
+
+        
+
+        public IEnumerable<TEntityRelationnal> GetAll()
+        {
+            return _sqlConnection.Query<TEntityRelationnal>(@$"SELECT * FROM [dbo].[v_client]");
         }
 
         /// <summary>
