@@ -1,10 +1,11 @@
-using CustomORM.Abstractions;
 using CustomORM.Console.Entities.DV2;
 using CustomORM.Console.Entities.Relationals;
 using CustomORM.Core;
+using CustomORM.Core.Extensions;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Serilog;
+using static Dapper.SqlMapper;
 
 namespace CustomORM.Console;
 
@@ -70,7 +71,8 @@ public class Program
             System.Console.WriteLine("------------------------------");
 
             // insert
-            repo.Insert(ref c);
+            // functional key, it not a job of repository
+            repo.Insert(ref c, GetNewFunctionnalKey<HClient>(connection));
 
             System.Console.WriteLine("------------------------------");
             System.Console.WriteLine($"{c.NoClient} - {c.Nom} {c.Prenom}");
@@ -78,5 +80,15 @@ public class Program
         }
         // Close and flush logger
         Log.CloseAndFlush();
+    }
+
+    /// <summary>
+    /// Get new id from sequence
+    /// </summary>
+    /// <param name="entity"></param>
+    /// <returns></returns>
+    private static int GetNewFunctionnalKey<TEntityRelationnal>(SqlConnection sqlConnection)
+    {
+        return sqlConnection.QueryFirst<int>($"SELECT NEXT VALUE FOR {typeof(TEntityRelationnal).FindSchemaTableTarget()}.seq_{typeof(TEntityRelationnal).FindTableTarget()}");
     }
 }

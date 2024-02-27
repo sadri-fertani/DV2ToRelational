@@ -65,7 +65,7 @@ namespace CustomORM.Core.Extensions
                 type.GetMappingNamesColumnsProperties();
 
             var columns = type == null ?
-                obj.GetType().GetNamesColumns().Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries):
+                obj.GetType().GetNamesColumns().Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries) :
                 type.GetNamesColumns().Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
 
             foreach (var column in columns)
@@ -160,6 +160,16 @@ namespace CustomORM.Core.Extensions
             throw new Exception("Error - construction object - no table associate");
         }
 
+        public static string FindSchemaTableTarget(this Type obj)
+        {
+            var attr = obj.GetCustomAttribute(typeof(TableAttribute));
+
+            if (attr != null)
+                return ((TableAttribute)attr).Schema ?? "dbo";
+
+            throw new Exception("Error - construction object - no table associate");
+        }
+
         public static string FindKey<T>(this T obj)
         {
             var propertyAttributeKey = ((PropertyInfo[])((TypeInfo)obj!.GetType()).DeclaredProperties).FirstOrDefault(p => p.GetCustomAttribute(typeof(KeyAttribute), true) != null);
@@ -226,7 +236,7 @@ namespace CustomORM.Core.Extensions
         public static void SetAuditInfo<T>(ref T obj, string propertyTarget, object value)
         {
             var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
-            eo[propertyTarget] =value.ToString();
+            eo[propertyTarget] = value.ToString();
 
             // Force cast/convert
             obj = JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(eo))!;
@@ -236,7 +246,7 @@ namespace CustomORM.Core.Extensions
         {
             var types = Assembly.GetEntryAssembly()?.GetTypes();
             var filteredType = types?.Where(t => t.FullName == fullName).First();
-            
+
             return Activator.CreateInstance(filteredType!)!;
         }
     }

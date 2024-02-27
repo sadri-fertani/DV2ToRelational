@@ -9,7 +9,7 @@ public interface IRepository<TEntityRelationnal, THub>
     /// Create a new DV entry
     /// </summary>
     /// <param name="entity">The entity to be inserted</param>
-    void Insert(ref TEntityRelationnal entity);
+    void Insert(ref TEntityRelationnal entity, int functionnalKey);
 
     /// <summary>
     /// Get list

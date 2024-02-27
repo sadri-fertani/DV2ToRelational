@@ -26,11 +26,12 @@ namespace CustomORM.Core
         }
 
         /// <summary>
-        /// Create a new DV entry
+        ///  Create a new DV entry
         /// </summary>
         /// <param name="entity">The entity to be inserted</param>
-        /// <returns>Same entities with a set primary key and set audit attributes</returns>
-        public void Insert(ref TEntityRelationnal entity)
+        /// <param name="functionnalKey"></param>
+        /// <exception cref="Exception"></exception>
+        public void Insert(ref TEntityRelationnal entity, int functionnalKey)
         {
             // Audit infos
             var LoadDts = DateTime.Now;
@@ -38,15 +39,14 @@ namespace CustomORM.Core
             var LoadSrc = AppDomain.CurrentDomain.FriendlyName;
 
             // New functionnal id => hash256
-            var getNewId = GetNewFunctionnalKey(entity);
-            var hashId = getNewId.ToSha256();
+            var hashId = functionnalKey.ToSha256();
 
             // 1- New instance of hub
             var hub = Activator.CreateInstance(typeof(THub))! as THub;
 
             // 2- Insert key and hash
             SpyIL.SetAuditInfo<THub>(ref hub!, hub!.FindKey<THub>(), hashId);
-            SpyIL.SetAuditInfo<THub>(ref hub, entity.FindKey<TEntityRelationnal>(), getNewId);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
+            SpyIL.SetAuditInfo<THub>(ref hub, entity.FindKey<TEntityRelationnal>(), functionnalKey);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
 
             // Inject audit infos to hub
             SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadDts), LoadDts);
@@ -55,7 +55,7 @@ namespace CustomORM.Core
 
             // 3- insert into hub        
             var rowsHubAffected = _sqlConnection.Execute(
-                @$"INSERT INTO [dbo].[{typeof(THub).FindTableTarget()}] VALUES ({typeof(THub)!.GetNamesColumns()})",
+                @$"INSERT INTO [{typeof(THub).FindSchemaTableTarget()}].[{typeof(THub).FindTableTarget()}] VALUES ({typeof(THub)!.GetNamesColumns()})",
                 hub.ConvertToParamsRequest(),
                 commandType: System.Data.CommandType.Text);
 
@@ -95,7 +95,7 @@ namespace CustomORM.Core
                     Type typeSatellite = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == prop.PropertyType.GenericTypeArguments.First().FullName).First();
 
                     var rowsSatelliteAffected = _sqlConnection.Execute(
-                        @$"INSERT INTO [dbo].[{typeSatellite.FindTableTarget()}] VALUES ({typeSatellite.GetNamesColumns()})",
+                        @$"INSERT INTO [{typeSatellite.FindSchemaTableTarget()}].[{typeSatellite.FindTableTarget()}] VALUES ({typeSatellite.GetNamesColumns()})",
                         Satellite.ConvertToParamsRequest(typeSatellite),
                         commandType: System.Data.CommandType.Text);
 
@@ -110,22 +110,12 @@ namespace CustomORM.Core
             }
 
             // Inject functional key into entity
-            SpyIL.SetFunctionnalKey<TEntityRelationnal>(ref entity, getNewId);
+            SpyIL.SetFunctionnalKey<TEntityRelationnal>(ref entity, functionnalKey);
         }
 
         public IEnumerable<TEntityRelationnal> GetAll()
         {
-            return _sqlConnection.Query<TEntityRelationnal>(@$"SELECT * FROM [dbo].[v_client]");
-        }
-
-        /// <summary>
-        /// Get new id from sequence
-        /// </summary>
-        /// <param name="entity"></param>
-        /// <returns></returns>
-        private int GetNewFunctionnalKey(TEntityRelationnal entity)
-        {
-            return _sqlConnection.QueryFirst<int>($"SELECT NEXT VALUE FOR dbo.seq_{typeof(THub).FindTableTarget()}");
+            return _sqlConnection.Query<TEntityRelationnal>(@$"SELECT * FROM [{typeof(THub).FindSchemaTableTarget()}].[v_{typeof(TEntityRelationnal).Name}]");
         }
     }
 }
