@@ -26,4 +26,7 @@ VIEW
 - View : v_{client}
 - Entity : V{Client}
 
+SEQUENCE
+- Name : seq_{h_client}
+
 no restriction for the name for hashkey

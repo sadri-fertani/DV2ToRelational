@@ -2,10 +2,10 @@ using CustomORM.Console.Entities.DV2;
 using CustomORM.Console.Entities.Relationals;
 using CustomORM.Core;
 using CustomORM.Core.Extensions;
+using Dapper;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
 using Serilog;
-using static Dapper.SqlMapper;
 
 namespace CustomORM.Console;
 
@@ -15,13 +15,15 @@ public class Program
 
     static void Init()
     {
-        #region Load config
+        #region Load appsettings.json
         var builder = new ConfigurationBuilder();
         builder.SetBasePath(Directory.GetCurrentDirectory())
                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
         Config = builder.Build();
+        #endregion
 
+        #region Config logger
         // Logger
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -30,7 +32,7 @@ public class Program
         #endregion
     }
 
-    public static void Main(string[] args)
+    public static void Main()
     {
         // Init environment
         Init();
@@ -60,7 +62,7 @@ public class Program
             // Create repository
             var repo = new Repository<Client, HClient>(connection);
             
-            // get all
+            // Get all
             var clients = repo.GetAll();
 
             System.Console.WriteLine("-----------BEFORE INSERT-------------------");
@@ -70,15 +72,14 @@ public class Program
             }
             System.Console.WriteLine("------------------------------");
 
-            // insert
-            // functional key, it not a job of repository
-            repo.Insert(ref c, GetNewFunctionnalKey<HClient>(connection));
+            // Insert            
+            repo.Insert(ref c, GetNewFunctionnalKey<HClient>(connection));      // functional key, it not a job of repository
 
             System.Console.WriteLine("------------------------------");
             System.Console.WriteLine($"{c.NoClient} - {c.Nom} {c.Prenom}");
             System.Console.WriteLine($"-----------------------------");
 
-            // get all
+            // Get all : One more time
             clients = repo.GetAll();
 
             System.Console.WriteLine("-----------AFTER INSERT-------------------");
@@ -88,6 +89,7 @@ public class Program
             }
             System.Console.WriteLine("------------------------------");
         }
+
         // Close and flush logger
         Log.CloseAndFlush();
     }
@@ -95,10 +97,10 @@ public class Program
     /// <summary>
     /// Get new id from sequence
     /// </summary>
-    /// <param name="entity"></param>
+    /// <param name="sqlConnection"></param>
     /// <returns></returns>
-    private static int GetNewFunctionnalKey<TEntityRelationnal>(SqlConnection sqlConnection)
+    private static int GetNewFunctionnalKey<TEntityDV2>(SqlConnection sqlConnection)
     {
-        return sqlConnection.QueryFirst<int>($"SELECT NEXT VALUE FOR {typeof(TEntityRelationnal).FindSchemaTableTarget()}.seq_{typeof(TEntityRelationnal).FindTableTarget()}");
+        return sqlConnection.QueryFirst<int>($"SELECT NEXT VALUE FOR {typeof(TEntityDV2).FindSchemaTableTarget()}.seq_{typeof(TEntityDV2).FindTableTarget()}");
     }
 }

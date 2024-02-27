@@ -11,6 +11,8 @@ namespace CustomORM.Core.Extensions
 {
     public static class SpyIL
     {
+        private static readonly char[] CommaSeparator = [','];
+
         public static Dictionary<string, string> GetMappingNamesColumnsProperties(this Type className)
         {
             var namespaceOfEntite = className.Namespace;
@@ -32,15 +34,13 @@ namespace CustomORM.Core.Extensions
         public static string GetNamesColumns(this Type className)
         {
             var namespaceOfEntite = className.Namespace;
-            List<string> columnsNames = new List<string>();
+            List<string> columnsNames = [];
 
             foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(className))
             {
                 if (!prop.PropertyType.FullName!.Contains(namespaceOfEntite!))
                 {
-                    var attributeColumn = prop.Attributes[typeof(ColumnAttribute)] as ColumnAttribute;
-
-                    if (attributeColumn != null)
+                    if (prop.Attributes[typeof(ColumnAttribute)] is ColumnAttribute attributeColumn)
                         columnsNames.Add($"@{attributeColumn.Name}");
                     else
                         columnsNames.Add($"@{prop.Name}");
@@ -59,12 +59,12 @@ namespace CustomORM.Core.Extensions
                 type.GetMappingNamesColumnsProperties();
 
             var columns = type == null ?
-                obj.GetType().GetNamesColumns().Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries) :
-                type.GetNamesColumns().Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                obj.GetType().GetNamesColumns().Split(CommaSeparator, StringSplitOptions.RemoveEmptyEntries) :
+                type.GetNamesColumns().Split(CommaSeparator, StringSplitOptions.RemoveEmptyEntries);
 
             foreach (var column in columns)
             {
-                var columnName = column.Substring(1);
+                var columnName = column[1..];
                 var propertyTarget = mapping.FirstOrDefault(x => x.Value == columnName).Key;
 
                 dbArgs.Add($"{columnName}", obj.GetValue(propertyTarget));
@@ -88,9 +88,7 @@ namespace CustomORM.Core.Extensions
             {
                 PropertyInfo propertyInfo = obj.GetType().GetProperty(name)!;
 
-                return propertyInfo != null ?
-                    propertyInfo.GetValue(obj, null) :
-                    null;
+                return propertyInfo?.GetValue(obj, null);
             }
 
             return null;
@@ -177,9 +175,8 @@ namespace CustomORM.Core.Extensions
                 throw new Exception("Error - construction object");
         }
 
-        public static void ChargerSatellite(ref object Satellite, object hc, object dto, string namespaceOfEntite)
+        public static void ChargerSatellite(ref object Satellite, object dto, string namespaceOfEntite)
         {
-            dynamic dynSat = Satellite;
             dynamic dynDto = dto;
 
             foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(Satellite))
@@ -206,7 +203,7 @@ namespace CustomORM.Core.Extensions
             }
         }
 
-        public static void SetAuditInfo<T>(ref T obj, string propertyTarget, object value)
+        public static void SetAuditInfo<T>(ref T obj, string propertyTarget, object? value = null)
         {
             var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
             eo[propertyTarget] = value?.ToString();
