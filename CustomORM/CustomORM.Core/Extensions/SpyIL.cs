@@ -1,16 +1,10 @@
 ﻿using Dapper;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Serilog;
-using System.Collections.Generic;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Dynamic;
-using System.Globalization;
-using System.Linq;
-using System.Linq.Expressions;
 using System.Reflection;
 
 namespace CustomORM.Core.Extensions
@@ -73,7 +67,7 @@ namespace CustomORM.Core.Extensions
                 var columnName = column.Substring(1);
                 var propertyTarget = mapping.FirstOrDefault(x => x.Value == columnName).Key;
 
-                dbArgs.Add($"{columnName}", obj.GetValue(propertyTarget)!.ToString());
+                dbArgs.Add($"{columnName}", obj.GetValue(propertyTarget));
             }
 
             return dbArgs;
@@ -83,23 +77,7 @@ namespace CustomORM.Core.Extensions
         {
             dynamic dyn = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
 
-            return dyn[propertyName];
-        }
-
-        /// <summary>
-        /// Injecter ou update une propriete dans un objet
-        /// </summary>
-        /// <param name="expando"></param>
-        /// <param name="propertyName"></param>
-        /// <param name="propertyValue"></param>
-        private static void SetProperty(this ExpandoObject expando, string propertyName, object propertyValue)
-        {
-            var expandoDict = expando as IDictionary<string, object>;
-
-            if (expandoDict.ContainsKey(propertyName))
-                expandoDict[propertyName] = propertyValue;
-            else
-                expandoDict.Add(propertyName, propertyValue);
+            return ((JValue)dyn[propertyName]).Value!;
         }
 
         public static object? GetObjectProperty(this object obj, string propertyName)
@@ -220,11 +198,6 @@ namespace CustomORM.Core.Extensions
         {
             if (value != null)
             {
-                //PropertyInfo propertyInfo = obj.GetType().GetProperty(propertyName)!;
-
-                //if (propertyInfo != null)
-                //    propertyInfo.SetValue(obj, value, null);
-
                 var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
                 eo[propertyName] = value.ToString();
 
@@ -236,7 +209,7 @@ namespace CustomORM.Core.Extensions
         public static void SetAuditInfo<T>(ref T obj, string propertyTarget, object value)
         {
             var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
-            eo[propertyTarget] = value.ToString();
+            eo[propertyTarget] = value?.ToString();
 
             // Force cast/convert
             obj = JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(eo))!;

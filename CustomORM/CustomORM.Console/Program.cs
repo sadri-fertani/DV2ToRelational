@@ -63,7 +63,7 @@ public class Program
             // get all
             var clients = repo.GetAll();
 
-            System.Console.WriteLine("------------------------------");
+            System.Console.WriteLine("-----------BEFORE INSERT-------------------");
             foreach (var client in clients)
             {
                 System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1}");
@@ -77,6 +77,16 @@ public class Program
             System.Console.WriteLine("------------------------------");
             System.Console.WriteLine($"{c.NoClient} - {c.Nom} {c.Prenom}");
             System.Console.WriteLine($"-----------------------------");
+
+            // get all
+            clients = repo.GetAll();
+
+            System.Console.WriteLine("-----------AFTER INSERT-------------------");
+            foreach (var client in clients)
+            {
+                System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1}");
+            }
+            System.Console.WriteLine("------------------------------");
         }
         // Close and flush logger
         Log.CloseAndFlush();
