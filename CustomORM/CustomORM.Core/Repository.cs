@@ -9,6 +9,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Dynamic;
 using System.Linq;
 using System.Reflection;
+using static Microsoft.EntityFrameworkCore.DbLoggerCategory.Database;
 
 namespace CustomORM.Core
 {
@@ -21,6 +22,7 @@ namespace CustomORM.Core
         public Repository(SqlConnection sqlConnection)
         {
             this._sqlConnection = sqlConnection;
+            DefaultTypeMap.MatchNamesWithUnderscores = true;
         }
 
         /// <summary>
@@ -43,7 +45,7 @@ namespace CustomORM.Core
             var hub = Activator.CreateInstance(typeof(THub))! as THub;
 
             // 2- Insert key and hash
-            SpyIL.SetAuditInfo<THub>(ref hub, hub.FindKey<THub>(), hashId);
+            SpyIL.SetAuditInfo<THub>(ref hub!, hub!.FindKey<THub>(), hashId);
             SpyIL.SetAuditInfo<THub>(ref hub, entity.FindKey<TEntityRelationnal>(), getNewId);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
 
             // Inject audit infos to hub
@@ -52,24 +54,24 @@ namespace CustomORM.Core
             SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadSrc), LoadSrc);
 
             // 3- insert into hub        
-            var rowsAffected = _sqlConnection.Query<THub>(
+            var rowsHubAffected = _sqlConnection.Execute(
                 @$"INSERT INTO [dbo].[{typeof(THub).FindTableTarget()}] VALUES ({typeof(THub)!.GetNamesColumns()})",
                 hub.ConvertToParamsRequest(),
                 commandType: System.Data.CommandType.Text);
 
-            if (rowsAffected.Any()) 
+            if (rowsHubAffected > 0)
+                Log.Information("Insertion HUB : OK");
+            else
             {
                 Log.Fatal("ERROR INSERT HUB");
                 throw new Exception("ERROR INSERT HUB");
             }
-            else
-                Log.Information("Insertion HUB : OK");
 
-            // 4- insert into Satellite            
+            // 4- insert into Satellite
             foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(typeof(THub)!))
             {
                 if (
-                    prop.PropertyType.FullName!.Contains(typeof(THub)!.Namespace!) && 
+                    prop.PropertyType.FullName!.Contains(typeof(THub)!.Namespace!) &&
                     (prop.PropertyType.Name == "ICollection`1") &&
                     prop.Name.StartsWith("S"))
                 {
@@ -79,24 +81,37 @@ namespace CustomORM.Core
                     var Satellite = SpyIL.GetInstance(prop.PropertyType.GenericTypeArguments.First().FullName!);
 
                     // 2- Insert key and hash
-                    Type typeSatellite = Satellite.GetType();
-                    SpyIL.SetAuditInfo<object> (ref Satellite, hub.FindKey<THub>(), hashId);
-                    
-                    // Inject audit infos to hub
+                    SpyIL.SetAuditInfo<object>(ref Satellite, hub.FindKey<THub>(), hashId);
+
+                    // 3- Inject audit infos to hub
                     SpyIL.SetAuditInfo<object>(ref Satellite, nameof(ISatellite.SLoadDts), LoadDts);
                     SpyIL.SetAuditInfo<object>(ref Satellite, nameof(ISatellite.SLoadUser), LoadUser);
                     SpyIL.SetAuditInfo<object>(ref Satellite, nameof(ISatellite.SLoadSrc), LoadSrc);
 
-                    // Load from Dto
-                    SpyIL.ChargerSatellite(Satellite!, hub, entity, typeof(THub).Namespace!);
+                    // 4- Load from Dto
+                    SpyIL.ChargerSatellite(ref Satellite!, hub, entity, typeof(THub).Namespace!);
+
+                    // 5- Insert into db
+                    Type typeSatellite = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == prop.PropertyType.GenericTypeArguments.First().FullName).First();
+
+                    var rowsSatelliteAffected = _sqlConnection.Execute(
+                        @$"INSERT INTO [dbo].[{typeSatellite.FindTableTarget()}] VALUES ({typeSatellite.GetNamesColumns()})",
+                        Satellite.ConvertToParamsRequest(typeSatellite),
+                        commandType: System.Data.CommandType.Text);
+
+                    if (rowsSatelliteAffected > 0)
+                        Log.Information("Insertion Satellite : OK");
+                    else
+                    {
+                        Log.Fatal("ERROR INSERT SATELLITE");
+                        throw new Exception("ERROR INSERT SATELLITE");
+                    }
                 }
             }
 
             // Inject functional key into entity
             SpyIL.SetFunctionnalKey<TEntityRelationnal>(ref entity, getNewId);
         }
-
-        
 
         public IEnumerable<TEntityRelationnal> GetAll()
         {
