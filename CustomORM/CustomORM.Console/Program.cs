@@ -1,3 +1,4 @@
+using CustomORM.Abstractions;
 using CustomORM.Console.Entities.DV2;
 using CustomORM.Console.Entities.Relationals;
 using CustomORM.Core;
@@ -56,27 +57,8 @@ public static class Program
             Langue = "AR"
         };
 
-        // Update object
-        var c2 = new Client
-        {
-            NoClient = 283,
-            Adresse1 = "8420",
-            Adresse2 = "Rue de Bergen",
-            Adresse3 = "",
-            Cite = "QUEBEC",
-            Provence = "QC",
-            Pays = "CA",
-            CodePostale = "G2C 2H8",
-            Nom = "Fertani",
-            Prenom = "Sadri",
-            Sexe = "M",
-            DateDeces = null,
-            DateNaissance = DateTime.Now,
-            Langue = "AR"
-        };
-
         // Create a connection
-        using (var connection = new SqlConnection(Config!.GetConnectionString("Default")))
+        using (var connection = new SqlConnection(Config?.GetConnectionString("Default")))
         {
             // Create repository
             var repo = new Repository<Client, HClient, int>(connection);
@@ -86,9 +68,7 @@ public static class Program
 
             System.Console.WriteLine("-----------BEFORE INSERT-------------------");
             foreach (var client in clients)
-            {
-                System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1}");
-            }
+                System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1} - {client.DateNaissance?.ToString("yyyy-MM-dd")}");
             System.Console.WriteLine("------------------------------");
 
             System.Console.WriteLine("Press any key to continue");
@@ -98,7 +78,7 @@ public static class Program
             repo.Add(ref c1, () => GetNewFunctionnalKey<HClient>(connection));      // functional key, it not a job of repository
 
             System.Console.WriteLine("------------------------------");
-            System.Console.WriteLine($"{c1.NoClient} - {c1.Nom} {c1.Prenom}");
+            System.Console.WriteLine($"{c1.NoClient} - {c1.Nom} {c1.Prenom} - {c1.Adresse1} - {c1.DateNaissance?.ToString("yyyy-MM-dd")}");
             System.Console.WriteLine($"-----------------------------");
 
             System.Console.WriteLine("Press any key to continue");
@@ -109,14 +89,15 @@ public static class Program
 
             System.Console.WriteLine("-----------AFTER INSERT-------------------");
             foreach (var client in clients)
-            {
-                System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1}");
-            }
+                System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1} - {client.DateNaissance?.ToString("yyyy-MM-dd")}");
             System.Console.WriteLine("------------------------------");
 
             // Get one
             var client283 = repo.Get(283);
-            System.Console.WriteLine($"{client283.NoClient} - {client283.Nom} {client283.Prenom} - {client283.Adresse1}");
+            if (client283 != null)
+                System.Console.WriteLine($"{client283.NoClient} - {client283.Nom} {client283.Prenom} - {client283.Adresse1} - {client283.DateNaissance?.ToString("yyyy-MM-dd")}");
+            else
+                System.Console.WriteLine($"Client 283 not found");
 
             System.Console.WriteLine("Press any key to continue");
             System.Console.ReadKey();
@@ -128,10 +109,11 @@ public static class Program
             System.Console.WriteLine("Press any key to continue");
             System.Console.ReadKey();
 
-            // Update c2
-            repo.Update(ref c2);
-            System.Console.WriteLine($"Client {c2.NoClient} updated");
-
+            // Update client283
+            client283.DateNaissance = DateTime.Now.AddMonths(1);
+            repo.Update(ref client283);
+            System.Console.WriteLine($"Client {client283.NoClient} updated");
+            System.Console.WriteLine($"{client283.NoClient} - {client283.Nom} {client283.Prenom} - {client283.Adresse1} - {client283.DateNaissance?.ToString("yyyy-MM-dd")}");
         }
 
         // Close and flush logger
@@ -145,6 +127,7 @@ public static class Program
     /// <returns></returns>
     private static int GetNewFunctionnalKey<TEntityDV2>(SqlConnection sqlConnection)
     {
-        return sqlConnection.QueryFirst<int>($"SELECT NEXT VALUE FOR {typeof(TEntityDV2).FindSchemaTableTarget()}.seq_{typeof(TEntityDV2).FindTableTarget()}");
+        return sqlConnection.QueryFirst<int>(
+            $"SELECT NEXT VALUE FOR {typeof(TEntityDV2).FindTableTargetInformation(TableSqlInfos.Schema)}.seq_{typeof(TEntityDV2).FindTableTargetInformation(TableSqlInfos.Name)}");
     }
 }

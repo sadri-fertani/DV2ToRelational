@@ -23,7 +23,7 @@ public interface IRepository<TEntityRelationnal, THub, TFunctionalKeyType>
     /// Get one
     /// </summary>
     /// <returns></returns>
-    TEntityRelationnal Get(TFunctionalKeyType functionalKey);
+    TEntityRelationnal? Get(TFunctionalKeyType functionalKey);
 
     /// <summary>
     /// Update entity

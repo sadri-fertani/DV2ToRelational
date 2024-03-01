@@ -9,9 +9,9 @@ using static Dapper.SqlMapper;
 
 namespace CustomORM.Core;
 
-public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : IRepository<TEntityRelationnal, THub, TFunctionalKeyType>
+public sealed class Repository<TEntityRelationnal, TEntityHub, TFunctionalKeyType> : IRepository<TEntityRelationnal, TEntityHub, TFunctionalKeyType>
     where TEntityRelationnal : class, new()
-    where THub : class, new()
+    where TEntityHub : class, new()
     where TFunctionalKeyType : IConvertible
 {
     private SqlConnection SqlConnection { get; set; }
@@ -50,7 +50,7 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
             AddPit(ref entity, auditInfos, hashId, satelliteLdtsForeignKeys);
 
             // Inject functional key into entity
-            SpyIL.SetFunctionnalKey<TEntityRelationnal, TFunctionalKeyType>(ref entity, functionnalKey);
+            PropertiesExtractorExtensions.SetFunctionnalKey<TEntityRelationnal, TFunctionalKeyType>(ref entity, functionnalKey);
 
             // ALL OK => commit transaction
             transactionScope.Complete();
@@ -69,7 +69,7 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
     public IEnumerable<TEntityRelationnal> GetAll()
     {
         // TODO : Remove top 10
-        return SqlConnection.Query<TEntityRelationnal>(@$"SELECT TOP 10 * FROM [{typeof(THub).FindSchemaTableTarget()}].[v_{typeof(TEntityRelationnal).Name}]");
+        return SqlConnection.Query<TEntityRelationnal>(@$"SELECT TOP 10 * FROM [{typeof(TEntityHub).FindTableTargetInformation(TableSqlInfos.Schema)}].[v_{typeof(TEntityRelationnal).Name}]");
     }
 
     /// <summary>
@@ -77,11 +77,11 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
     /// </summary>
     /// <param name="functionalKey"></param>
     /// <returns></returns>
-    public TEntityRelationnal Get(TFunctionalKeyType functionalKey)
+    public TEntityRelationnal? Get(TFunctionalKeyType functionalKey)
     {
-        return SqlConnection.QueryFirst<TEntityRelationnal>
+        return SqlConnection.QueryFirstOrDefault<TEntityRelationnal>
             (
-                @$"SELECT * FROM [{typeof(THub).FindSchemaTableTarget()}].[v_{typeof(TEntityRelationnal).Name}] WHERE [{typeof(THub).FindColumnName(typeof(TEntityRelationnal).FindKey())}] = @{nameof(functionalKey)}",
+                @$"SELECT * FROM [{typeof(TEntityHub).FindTableTargetInformation(TableSqlInfos.Schema)}].[v_{typeof(TEntityRelationnal).Name}] WHERE [{typeof(TEntityHub).FindColumnName(typeof(TEntityRelationnal).FindKey())}] = @{nameof(functionalKey)}",
                 new { functionalKey = functionalKey }
             );
     }
@@ -135,7 +135,7 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
     {
         SqlConnection.Query
             (
-                @$"UPDATE [{typeof(THub).FindSchemaTableTarget()}].[p_{typeof(TEntityRelationnal).Name}] SET [p_load_end_dts] = @currentDate WHERE [{typeof(THub).FindColumnName(typeof(THub).FindKey())}] = @hKey AND [p_load_end_dts] IS NULL",
+                @$"UPDATE [{typeof(TEntityHub).FindTableTargetInformation(TableSqlInfos.Schema)}].[p_{typeof(TEntityRelationnal).Name}] SET [p_load_end_dts] = @currentDate WHERE [{typeof(TEntityHub).FindColumnName(typeof(TEntityHub).FindKey())}] = @hKey AND [p_load_end_dts] IS NULL",
                 new
                 {
                     currentDate = dateDeleteSynchro ?? DateTime.Now,
@@ -157,36 +157,32 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
         // Foreign key between Satellite and Pit
         satelliteLdtsForeignKeys = [];
 
-        foreach (var propSat in typeof(THub).GetListOfDv2Objects(DV2TypeObject.S))
+        foreach (var propSat in typeof(TEntityHub).GetListOfChildrenObjects(DV2TypeObject.S))
         {
             // 1- new instance of Satellite
-            var satellite = SpyIL.GetInstance(propSat.FullName!);
+            var satellite = PropertiesExtractorExtensions.GetInstance(propSat.FullName!);
 
             // 2- Insert key and hash
-            SpyIL.SetAuditInfo<object>(ref satellite, satellite.FindKey(), hashId);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref satellite, satellite.FindKey(), hashId);
 
             // 3.1- Inject audit infos to satellite
-            SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadDts), auditInformations.LoadDts);
-            SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadUser), auditInformations.LoadUser);
-            SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadSrc), auditInformations.LoadSrc);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref satellite, nameof(ISatellite.SLoadDts), auditInformations.LoadDts);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref satellite, nameof(ISatellite.SLoadUser), auditInformations.LoadUser);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref satellite, nameof(ISatellite.SLoadSrc), auditInformations.LoadSrc);
 
             // 3.2- Save foreign key
             satelliteLdtsForeignKeys.Add(
-                SpyIL.GetNameForeignKeyLdts
-                (
-                    propSat.Name,
-                    typeof(TEntityRelationnal).Name
-                ),
+                $"{propSat.Name.Replace(typeof(TEntityRelationnal).Name, string.Empty)}Ldts",
                 auditInformations.LoadDts);
 
             // 4- Load from Dto
-            SpyIL.ChargerSatellite(ref satellite!, entity, typeof(THub).Namespace!);
+            PropertiesExtractorExtensions.ChargerSatellite(ref satellite!, entity, typeof(TEntityHub).Namespace!);
 
             // 5- Insert into db
             Type typeSatellite = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == propSat.FullName).First();
 
             var rowsSatelliteAffected = SqlConnection.Execute(
-                @$"INSERT INTO [{typeSatellite.FindSchemaTableTarget()}].[{typeSatellite.FindTableTarget()}] VALUES ({typeSatellite.GetNamesColumns()})",
+                @$"INSERT INTO [{typeSatellite.FindTableTargetInformation(TableSqlInfos.Schema)}].[{typeSatellite.FindTableTargetInformation(TableSqlInfos.Name)}] VALUES ({typeSatellite.GetNamesColumns()})",
                 satellite.ConvertToParamsRequest(typeSatellite),
                 commandType: System.Data.CommandType.Text);
 
@@ -210,30 +206,31 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
     /// <exception cref="Exception"></exception>
     private void AddPit(ref TEntityRelationnal entity, AuditInformations auditInformations, string hashId, Dictionary<string, DateTime> satelliteLdtsForeignKeys)
     {
-        var propPit = typeof(THub).GetListOfDv2Objects(DV2TypeObject.P).FirstOrDefault();
+        var propPit = typeof(TEntityHub).GetListOfChildrenObjects(DV2TypeObject.P).FirstOrDefault();
+
         if (propPit != null)
         {
             // 1- new instance of PIT
-            var pit = SpyIL.GetInstance(propPit.FullName!);
+            var pit = PropertiesExtractorExtensions.GetInstance(propPit.FullName!);
 
             // 2- Insert key and hash
-            SpyIL.SetAuditInfo<object>(ref pit, pit.FindKey(), hashId);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref pit, pit.FindKey(), hashId);
 
             // 3- Inject audit infos to pit
-            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadDts), auditInformations.LoadDts);
-            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadEndDts));
-            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadUser), auditInformations.LoadUser);
-            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadSrc), auditInformations.LoadSrc);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref pit, nameof(IPit.PLoadDts), auditInformations.LoadDts);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref pit, nameof(IPit.PLoadEndDts));
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref pit, nameof(IPit.PLoadUser), auditInformations.LoadUser);
+            PropertiesExtractorExtensions.SetObjectProperty<object>(ref pit, nameof(IPit.PLoadSrc), auditInformations.LoadSrc);
 
             // 4- Inject foreigns keys
             foreach (var kv in satelliteLdtsForeignKeys)
-                SpyIL.SetAuditInfo<object>(ref pit, kv.Key, kv.Value);
+                PropertiesExtractorExtensions.SetObjectProperty<object>(ref pit, kv.Key, kv.Value);
 
             // 5- Insert into db
             Type typePit = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == propPit.FullName).First();
 
             var rowsPitAffected = SqlConnection.Execute(
-                @$"INSERT INTO [{typePit.FindSchemaTableTarget()}].[{typePit.FindTableTarget()}] VALUES ({typePit.GetNamesColumns()})",
+                @$"INSERT INTO [{typePit.FindTableTargetInformation(TableSqlInfos.Schema)}].[{typePit.FindTableTargetInformation(TableSqlInfos.Name)}] VALUES ({typePit.GetNamesColumns()})",
                 pit.ConvertToParamsRequest(typePit),
                 commandType: System.Data.CommandType.Text);
 
@@ -257,20 +254,23 @@ public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : I
     /// <exception cref="Exception"></exception>
     private void AddHub(ref TEntityRelationnal entity, AuditInformations auditInformations, TFunctionalKeyType functionnalKey, string hashId)
     {
-        var hub = Activator.CreateInstance(typeof(THub))! as THub;
+        var hub = Activator.CreateInstance(typeof(TEntityHub))! as TEntityHub;
+
+        if (hub == null)
+            throw new Exception("Error create an instance of hub");
 
         // 2- Insert key and hash
-        SpyIL.SetAuditInfo<THub>(ref hub!, hub!.FindKey<THub>(), hashId);
-        SpyIL.SetAuditInfo<THub>(ref hub, entity.FindKey<TEntityRelationnal>(), functionnalKey);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
+        PropertiesExtractorExtensions.SetObjectProperty<TEntityHub>(ref hub, typeof(TEntityHub).FindKey(), hashId);
+        PropertiesExtractorExtensions.SetObjectProperty<TEntityHub>(ref hub, typeof(TEntityRelationnal).FindKey(), functionnalKey);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
 
         // Inject audit infos to hub
-        SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadDts), auditInformations.LoadDts);
-        SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadUser), auditInformations.LoadUser);
-        SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadSrc), auditInformations.LoadSrc);
+        PropertiesExtractorExtensions.SetObjectProperty<TEntityHub>(ref hub, nameof(IHub.HLoadDts), auditInformations.LoadDts);
+        PropertiesExtractorExtensions.SetObjectProperty<TEntityHub>(ref hub, nameof(IHub.HLoadUser), auditInformations.LoadUser);
+        PropertiesExtractorExtensions.SetObjectProperty<TEntityHub>(ref hub, nameof(IHub.HLoadSrc), auditInformations.LoadSrc);
 
         // 3- insert into hub        
         var rowsHubAffected = SqlConnection.Execute(
-            @$"INSERT INTO [{typeof(THub).FindSchemaTableTarget()}].[{typeof(THub).FindTableTarget()}] VALUES ({typeof(THub)!.GetNamesColumns()})",
+            @$"INSERT INTO [{typeof(TEntityHub).FindTableTargetInformation(TableSqlInfos.Schema)}].[{typeof(TEntityHub).FindTableTargetInformation(TableSqlInfos.Name)}] VALUES ({typeof(TEntityHub)!.GetNamesColumns()})",
             hub.ConvertToParamsRequest(),
             commandType: System.Data.CommandType.Text);
 

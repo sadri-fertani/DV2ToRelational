@@ -10,10 +10,15 @@ using System.Reflection;
 
 namespace CustomORM.Core.Extensions;
 
-public static class SpyIL
+public static class PropertiesExtractorExtensions
 {
     private static readonly char[] CommaSeparator = [','];
 
+    /// <summary>
+    /// Create mapping profile
+    /// </summary>
+    /// <param name="className"></param>
+    /// <returns></returns>
     public static Dictionary<string, string> GetMappingNamesColumnsProperties(this Type className)
     {
         var namespaceOfEntite = className.Namespace;
@@ -32,6 +37,11 @@ public static class SpyIL
         return mapping;
     }
 
+    /// <summary>
+    /// Get column name associate with
+    /// </summary>
+    /// <param name="className"></param>
+    /// <returns></returns>
     public static string GetNamesColumns(this Type className)
     {
         var namespaceOfEntite = className.Namespace;
@@ -51,6 +61,12 @@ public static class SpyIL
         return string.Join(",", columnsNames);
     }
 
+    /// <summary>
+    /// Convert to dynamic params (dapper)
+    /// </summary>
+    /// <param name="obj"></param>
+    /// <param name="type"></param>
+    /// <returns></returns>
     public static DynamicParameters ConvertToParamsRequest(this object obj, Type? type = null)
     {
         var dbArgs = new DynamicParameters();
@@ -95,7 +111,7 @@ public static class SpyIL
         return null;
     }
 
-    public static PropertyDescriptorCollection GetPropertiesDescription(this object obj)
+    private static PropertyDescriptorCollection GetPropertiesDescription(this object obj)
     {
         var pMethode1 = TypeDescriptor.GetProperties(Type.GetType(obj.GetType().FullName!)!);
 
@@ -110,7 +126,7 @@ public static class SpyIL
         return pMethode2;
     }
 
-    public static string? FindPropertyByAttribute(object obj, string propertyName)
+    private static string? FindPropertyByAttribute(object obj, string propertyName)
     {
         foreach (PropertyDescriptor prop in obj.GetPropertiesDescription())
         {
@@ -124,37 +140,35 @@ public static class SpyIL
         }
 
         Log.Information($"Property {propertyName} not found in {obj.GetType().FullName}");
+
         return null;
     }
 
-    public static string FindTableTarget(this Type obj)
+    public static string FindTableTargetInformation(this Type obj, TableSqlInfos tableSqlInfos)
     {
         var attr = obj.GetCustomAttribute(typeof(TableAttribute));
 
         if (attr != null)
-            return ((TableAttribute)attr).Name;
-
-        throw new Exception("Error - construction object - no table associate");
-    }
-
-    public static string FindSchemaTableTarget(this Type obj)
-    {
-        var attr = obj.GetCustomAttribute(typeof(TableAttribute));
-
-        if (attr != null)
-            return ((TableAttribute)attr).Schema ?? "dbo";
+        {
+            switch (tableSqlInfos)
+            {
+                case TableSqlInfos.Name:
+                    return ((TableAttribute)attr).Name;
+                case TableSqlInfos.Schema:
+                    return ((TableAttribute)attr).Schema ?? "dbo";
+                default:
+                    throw new ArgumentException(nameof(tableSqlInfos));
+            }
+        }
 
         throw new Exception("Error - construction object - no table associate");
     }
 
     public static string FindKey<T>(this T obj)
     {
-        var propertyAttributeKey = ((PropertyInfo[])((TypeInfo)obj!.GetType()).DeclaredProperties).FirstOrDefault(p => p.GetCustomAttribute(typeof(KeyAttribute), true) != null);
-
-        if (propertyAttributeKey != null)
-            return propertyAttributeKey.Name;
-
-        throw new Exception("Error - construction object - no key found");
+        return obj!
+            .GetType()
+            .FindKey();
     }
 
     public static string FindKey(this Type type)
@@ -167,6 +181,13 @@ public static class SpyIL
         throw new Exception("Error - construction object - no key found");
     }
 
+    /// <summary>
+    /// Find column name
+    /// </summary>
+    /// <param name="type"></param>
+    /// <param name="columnName"></param>
+    /// <returns></returns>
+    /// <exception cref="Exception"></exception>
     public static string FindColumnName(this Type type, string columnName)
     {
         var propertyAttributeColumn = ((PropertyInfo[])((TypeInfo)type).DeclaredProperties).FirstOrDefault(p => p.Name == columnName && p.GetCustomAttribute(typeof(ColumnAttribute), true) != null);
@@ -177,6 +198,14 @@ public static class SpyIL
         throw new Exception("Error - construction object - no key found");
     }
 
+    /// <summary>
+    /// Set functional key
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <typeparam name="TFunctionalKeyType"></typeparam>
+    /// <param name="obj"></param>
+    /// <param name="value"></param>
+    /// <exception cref="Exception"></exception>
     public static void SetFunctionnalKey<T, TFunctionalKeyType>(ref T obj, TFunctionalKeyType value)
     {
         // Force cast/convert
@@ -196,6 +225,12 @@ public static class SpyIL
             throw new Exception("Error - construction object");
     }
 
+    /// <summary>
+    /// Load date in satellite
+    /// </summary>
+    /// <param name="Satellite"></param>
+    /// <param name="dto"></param>
+    /// <param name="namespaceOfEntite"></param>
     public static void ChargerSatellite(ref object Satellite, object dto, string namespaceOfEntite)
     {
         dynamic dynDto = dto;
@@ -205,75 +240,62 @@ public static class SpyIL
             if (!prop.PropertyType.FullName!.Contains(namespaceOfEntite))
             {
                 SetObjectProperty(
+                    ref Satellite,
                     prop.Name,
                     GetObjectProperty(dynDto, prop.Name),
-                    ref Satellite);
+                    false
+                    );
             }
         }
     }
 
-    private static void SetObjectProperty(string propertyName, object value, ref object obj)
+    /// <summary>
+    /// Set property in object
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="obj"></param>
+    /// <param name="propertyTarget"></param>
+    /// <param name="value"></param>
+    /// <param name="allowNull"></param>
+    public static void SetObjectProperty<T>(ref T obj, string propertyTarget, object? value = null, bool allowNull = true)
     {
-        if (value != null)
+        if (value != null || (value == null && allowNull))
         {
             var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
-            eo[propertyName] = value.ToString();
+            eo[propertyTarget] = value?.ToString();
 
             // Force cast/convert
-            obj = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(eo))!;
+            obj = JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(eo))!;
         }
     }
 
-    public static void SetAuditInfo<T>(ref T obj, string propertyTarget, object? value = null)
-    {
-        var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
-        eo[propertyTarget] = value?.ToString();
-
-        // Force cast/convert
-        obj = JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(eo))!;
-    }
-
+    /// <summary>
+    /// Get instance object from a dll in another project, but the same solution
+    /// </summary>
+    /// <param name="fullName"></param>
+    /// <returns></returns>
+    /// <exception cref="ArgumentNullException"></exception>
     public static object GetInstance(string? fullName)
     {
         if (fullName == null)
             throw new ArgumentNullException(nameof(fullName));
 
-        var types = Assembly.GetEntryAssembly()?.GetTypes();
-        var filteredType = types?.Where(t => t.FullName == fullName).First();
-
-        return Activator.CreateInstance(filteredType!)!;
+        var type = Assembly
+            .GetEntryAssembly()?
+            .GetTypes()?
+            .Where(t => t.FullName == fullName)
+            .First();
+        
+        return Activator.CreateInstance(type!)!;
     }
 
     /// <summary>
-    /// Compute foreign key name
+    /// Get target children (collection type) object
     /// </summary>
-    /// <param name="satelliteName"></param>
-    /// <param name="HubName"></param>
+    /// <param name="T"></param>
+    /// <param name="typeObject"></param>
     /// <returns></returns>
-    public static string GetNameForeignKeyLdts(string satelliteName, string HubName)
-    {
-        // Example : (SClientAdresse, Client) => SAdresseLdts
-
-        return $"{satelliteName.Replace(HubName, string.Empty)}Ldts";
-    }
-
-    public static string? GetPitFullName(Type type)
-    {
-        foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(type))
-        {
-            if (
-                prop.PropertyType.FullName!.Contains(type!.Namespace!) &&
-                (prop.PropertyType.Name == "ICollection`1") &&
-                prop.Name.StartsWith('P'))
-            {
-                return prop.PropertyType.GenericTypeArguments.First().FullName!;
-            }
-        }
-
-        return null;
-    }
-
-    public static IEnumerable<Type> GetListOfDv2Objects(this Type T, DV2TypeObject typeObject)
+    public static IEnumerable<Type> GetListOfChildrenObjects(this Type T, DV2TypeObject typeObject)
     {
         List<Type> list = [];
 

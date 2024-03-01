@@ -5,11 +5,11 @@ using System.CodeDom.Compiler;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 
-namespace CustomORM.Converter;
+namespace CustomORM.Converter.Extensions;
 
-public static class CodeCompiler
+public static class CodeCompilerExtensions
 {
-    public static CSharpCompilation CompileAssembly(string sourceCode)
+    public static CSharpCompilation CompileAssembly(this string sourceCode)
     {
         // https://softwareparticles.com/how-to-dynamically-execute-code-in-net/
         var codeString = SourceText.From(sourceCode);

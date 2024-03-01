@@ -20,7 +20,7 @@ public static class PropertiesExtractor
             numLineProperty = lines.ToList<string>().FindIndex(numLineProperty + 1, l => l.Contains("[Column(", StringComparison.OrdinalIgnoreCase));
             if (numLineProperty != -1)
             {
-                var indexProperty = lines.ToList<string>().FindIndex(numLineProperty, l => !l.Contains("["));
+                var indexProperty = lines.ToList<string>().FindIndex(numLineProperty, l => !l.Contains("["));   // Find next line without annotation start
                 properties.Add(lines.ElementAt(indexProperty).Trim());
             }
         }
