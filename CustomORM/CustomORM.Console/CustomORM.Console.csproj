@@ -20,14 +20,12 @@
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Compile Update="Entities\DV2\SClientAdresse.cs">
-	    <CopyToOutputDirectory>Never</CopyToOutputDirectory>
-	  </Compile>
-	</ItemGroup>
-	
-	<ItemGroup>
 		<None Update="appsettings.json">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</None>
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Entities\Relationals\" />
 	</ItemGroup>
 </Project>

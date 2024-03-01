@@ -9,7 +9,7 @@ using Serilog;
 
 namespace CustomORM.Console;
 
-public class Program
+public static class Program
 {
     private static IConfiguration? Config { get; set; }
 
@@ -38,7 +38,7 @@ public class Program
         Init();
 
         // Create object
-        var c = new Client
+        var c1 = new Client
         {
             NoClient = 0,
             Adresse1 = "8420",
@@ -56,12 +56,31 @@ public class Program
             Langue = "AR"
         };
 
+        // Update object
+        var c2 = new Client
+        {
+            NoClient = 283,
+            Adresse1 = "8420",
+            Adresse2 = "Rue de Bergen",
+            Adresse3 = "",
+            Cite = "QUEBEC",
+            Provence = "QC",
+            Pays = "CA",
+            CodePostale = "G2C 2H8",
+            Nom = "Fertani",
+            Prenom = "Sadri",
+            Sexe = "M",
+            DateDeces = null,
+            DateNaissance = DateTime.Now,
+            Langue = "AR"
+        };
+
         // Create a connection
         using (var connection = new SqlConnection(Config!.GetConnectionString("Default")))
         {
             // Create repository
-            var repo = new Repository<Client, HClient>(connection);
-            
+            var repo = new Repository<Client, HClient, int>(connection);
+
             // Get all
             var clients = repo.GetAll();
 
@@ -72,12 +91,18 @@ public class Program
             }
             System.Console.WriteLine("------------------------------");
 
+            System.Console.WriteLine("Press any key to continue");
+            System.Console.ReadKey();
+
             // Insert            
-            repo.Insert(ref c, GetNewFunctionnalKey<HClient>(connection));      // functional key, it not a job of repository
+            repo.Add(ref c1, () => GetNewFunctionnalKey<HClient>(connection));      // functional key, it not a job of repository
 
             System.Console.WriteLine("------------------------------");
-            System.Console.WriteLine($"{c.NoClient} - {c.Nom} {c.Prenom}");
+            System.Console.WriteLine($"{c1.NoClient} - {c1.Nom} {c1.Prenom}");
             System.Console.WriteLine($"-----------------------------");
+
+            System.Console.WriteLine("Press any key to continue");
+            System.Console.ReadKey();
 
             // Get all : One more time
             clients = repo.GetAll();
@@ -88,6 +113,25 @@ public class Program
                 System.Console.WriteLine($"{client.NoClient} - {client.Nom} {client.Prenom} - {client.Adresse1}");
             }
             System.Console.WriteLine("------------------------------");
+
+            // Get one
+            var client283 = repo.Get(283);
+            System.Console.WriteLine($"{client283.NoClient} - {client283.Nom} {client283.Prenom} - {client283.Adresse1}");
+
+            System.Console.WriteLine("Press any key to continue");
+            System.Console.ReadKey();
+
+            // Delete last inserted
+            repo.Delete(c1.NoClient);
+            System.Console.WriteLine($"Delete client {c1.NoClient} ok");
+
+            System.Console.WriteLine("Press any key to continue");
+            System.Console.ReadKey();
+
+            // Update c2
+            repo.Update(ref c2);
+            System.Console.WriteLine($"Client {c2.NoClient} updated");
+
         }
 
         // Close and flush logger

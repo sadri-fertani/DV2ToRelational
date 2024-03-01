@@ -3,199 +3,283 @@ using CustomORM.Core.Extensions;
 using Dapper;
 using Microsoft.Data.SqlClient;
 using Serilog;
-using System.ComponentModel;
 using System.Reflection;
 using System.Transactions;
+using static Dapper.SqlMapper;
 
-namespace CustomORM.Core
+namespace CustomORM.Core;
+
+public sealed class Repository<TEntityRelationnal, THub, TFunctionalKeyType> : IRepository<TEntityRelationnal, THub, TFunctionalKeyType>
+    where TEntityRelationnal : class, new()
+    where THub : class, new()
+    where TFunctionalKeyType : IConvertible
 {
-    public sealed class Repository<TEntityRelationnal, THub> : IRepository<TEntityRelationnal, THub>
-        where TEntityRelationnal : class, new()
-        where THub : class, new()
+    private SqlConnection SqlConnection { get; set; }
+
+    public Repository(SqlConnection sqlConnection)
     {
-        private SqlConnection SqlConnection { get; set; }
+        this.SqlConnection = sqlConnection;
+        DefaultTypeMap.MatchNamesWithUnderscores = true;
+    }
 
-        public Repository(SqlConnection sqlConnection)
+    /// <summary>
+    ///  Create a new DV entry
+    /// </summary>
+    /// <param name="entity">The entity to be inserted</param>
+    /// <param name="functionnalKey"></param>
+    /// <exception cref="Exception"></exception>
+    public void Add(ref TEntityRelationnal entity, Func<TFunctionalKeyType> GetFunctionalKey)
+    {
+        using var transactionScope = new TransactionScope();
+        try
         {
-            this.SqlConnection = sqlConnection;
-            DefaultTypeMap.MatchNamesWithUnderscores = true;
+            // Audit infos
+            AuditInformations auditInfos = new();
+
+            // New functionnal id => hash256
+            var functionnalKey = GetFunctionalKey.Invoke();
+            var hashId = functionnalKey.ToSha256();
+
+            // 1- New instance of hub
+            AddHub(ref entity, auditInfos, functionnalKey, hashId);
+
+            // 4- insert into Satellites            
+            AddSatellites(ref entity, auditInfos, hashId, out Dictionary<string, DateTime> satelliteLdtsForeignKeys);
+
+            // 5- insert into PIT
+            AddPit(ref entity, auditInfos, hashId, satelliteLdtsForeignKeys);
+
+            // Inject functional key into entity
+            SpyIL.SetFunctionnalKey<TEntityRelationnal, TFunctionalKeyType>(ref entity, functionnalKey);
+
+            // ALL OK => commit transaction
+            transactionScope.Complete();
         }
-
-        /// <summary>
-        ///  Create a new DV entry
-        /// </summary>
-        /// <param name="entity">The entity to be inserted</param>
-        /// <param name="functionnalKey"></param>
-        /// <exception cref="Exception"></exception>
-        public void Insert(ref TEntityRelationnal entity, int functionnalKey)
+        catch (Exception ex)
         {
-            using var transactionScope = new TransactionScope();
-            try
+            Log.Fatal(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Get all
+    /// </summary>
+    /// <returns></returns>
+    public IEnumerable<TEntityRelationnal> GetAll()
+    {
+        // TODO : Remove top 10
+        return SqlConnection.Query<TEntityRelationnal>(@$"SELECT TOP 10 * FROM [{typeof(THub).FindSchemaTableTarget()}].[v_{typeof(TEntityRelationnal).Name}]");
+    }
+
+    /// <summary>
+    /// Find one entity
+    /// </summary>
+    /// <param name="functionalKey"></param>
+    /// <returns></returns>
+    public TEntityRelationnal Get(TFunctionalKeyType functionalKey)
+    {
+        return SqlConnection.QueryFirst<TEntityRelationnal>
+            (
+                @$"SELECT * FROM [{typeof(THub).FindSchemaTableTarget()}].[v_{typeof(TEntityRelationnal).Name}] WHERE [{typeof(THub).FindColumnName(typeof(TEntityRelationnal).FindKey())}] = @{nameof(functionalKey)}",
+                new { functionalKey = functionalKey }
+            );
+    }
+
+    /// <summary>
+    /// Update entity
+    /// </summary>
+    /// <param name="entity"></param>
+    /// <exception cref="NotImplementedException"></exception>
+    public void Update(ref TEntityRelationnal entity)
+    {
+        #region check entity exist
+        var functionalKey = (TFunctionalKeyType)Convert.ChangeType(entity.GetValue(entity.FindKey()), typeof(TFunctionalKeyType));
+        var entityFromDb = Get(functionalKey);
+
+        if (entityFromDb == null)
+            throw new Exception("Not found");
+        #endregion
+
+        // Audit infos
+        AuditInformations auditInfos = new();
+
+        using var transactionScope = new TransactionScope();
+        try
+        {
+            // insert new sattelite
+            AddSatellites(ref entity, auditInfos, functionalKey.ToSha256(), out Dictionary<string, DateTime> satelliteLdtsForeignKeys);
+
+            // call Delete with same date creation of satellites
+            Delete(functionalKey, auditInfos.LoadDts);
+
+            // insert new pit
+            AddPit(ref entity, auditInfos, functionalKey.ToSha256(), satelliteLdtsForeignKeys);
+
+            // ALL OK => commit transaction
+            transactionScope.Complete();
+        }
+        catch (Exception ex)
+        {
+            Log.Fatal(ex.Message);
+            Console.WriteLine(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Delete entity
+    /// </summary>
+    /// <param name="functionalKey"></param>
+    /// <param name="dateDeleteSynchro"></param>
+    public void Delete(TFunctionalKeyType functionalKey, DateTime? dateDeleteSynchro = null)
+    {
+        SqlConnection.Query
+            (
+                @$"UPDATE [{typeof(THub).FindSchemaTableTarget()}].[p_{typeof(TEntityRelationnal).Name}] SET [p_load_end_dts] = @currentDate WHERE [{typeof(THub).FindColumnName(typeof(THub).FindKey())}] = @hKey AND [p_load_end_dts] IS NULL",
+                new
+                {
+                    currentDate = dateDeleteSynchro ?? DateTime.Now,
+                    hKey = functionalKey.ToSha256()
+                }
+            );
+    }
+
+    /// <summary>
+    /// Add satellite(s)
+    /// </summary>
+    /// <param name="entity"></param>
+    /// <param name="auditInformations"></param>
+    /// <param name="hashId"></param>
+    /// <param name="satelliteLdtsForeignKeys"></param>
+    /// <exception cref="Exception"></exception>
+    private void AddSatellites(ref TEntityRelationnal entity, AuditInformations auditInformations, string hashId, out Dictionary<string, DateTime> satelliteLdtsForeignKeys)
+    {
+        // Foreign key between Satellite and Pit
+        satelliteLdtsForeignKeys = [];
+
+        foreach (var propSat in typeof(THub).GetListOfDv2Objects(DV2TypeObject.S))
+        {
+            // 1- new instance of Satellite
+            var satellite = SpyIL.GetInstance(propSat.FullName!);
+
+            // 2- Insert key and hash
+            SpyIL.SetAuditInfo<object>(ref satellite, satellite.FindKey(), hashId);
+
+            // 3.1- Inject audit infos to satellite
+            SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadDts), auditInformations.LoadDts);
+            SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadUser), auditInformations.LoadUser);
+            SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadSrc), auditInformations.LoadSrc);
+
+            // 3.2- Save foreign key
+            satelliteLdtsForeignKeys.Add(
+                SpyIL.GetNameForeignKeyLdts
+                (
+                    propSat.Name,
+                    typeof(TEntityRelationnal).Name
+                ),
+                auditInformations.LoadDts);
+
+            // 4- Load from Dto
+            SpyIL.ChargerSatellite(ref satellite!, entity, typeof(THub).Namespace!);
+
+            // 5- Insert into db
+            Type typeSatellite = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == propSat.FullName).First();
+
+            var rowsSatelliteAffected = SqlConnection.Execute(
+                @$"INSERT INTO [{typeSatellite.FindSchemaTableTarget()}].[{typeSatellite.FindTableTarget()}] VALUES ({typeSatellite.GetNamesColumns()})",
+                satellite.ConvertToParamsRequest(typeSatellite),
+                commandType: System.Data.CommandType.Text);
+
+            if (rowsSatelliteAffected > 0)
+                Log.Information("Insertion Satellite : OK");
+            else
             {
-                // Audit infos
-                var LoadDts = DateTime.Now;
-                var LoadUser = Environment.UserName;
-                var LoadSrc = AppDomain.CurrentDomain.FriendlyName;
-
-                // New functionnal id => hash256
-                var hashId = functionnalKey.ToSha256();
-
-                // 1- New instance of hub
-                var hub = Activator.CreateInstance(typeof(THub))! as THub;
-
-                // 2- Insert key and hash
-                SpyIL.SetAuditInfo<THub>(ref hub!, hub!.FindKey<THub>(), hashId);
-                SpyIL.SetAuditInfo<THub>(ref hub, entity.FindKey<TEntityRelationnal>(), functionnalKey);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
-
-                // Inject audit infos to hub
-                SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadDts), LoadDts);
-                SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadUser), LoadUser);
-                SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadSrc), LoadSrc);
-
-                // 3- insert into hub        
-                var rowsHubAffected = SqlConnection.Execute(
-                    @$"INSERT INTO [{typeof(THub).FindSchemaTableTarget()}].[{typeof(THub).FindTableTarget()}] VALUES ({typeof(THub)!.GetNamesColumns()})",
-                    hub.ConvertToParamsRequest(),
-                    commandType: System.Data.CommandType.Text);
-
-                if (rowsHubAffected > 0)
-                    Log.Information("Insertion HUB : OK");
-                else
-                {
-                    Log.Fatal("ERROR INSERT HUB");
-                    throw new Exception("ERROR INSERT HUB");
-                }
-
-                // 4- insert into Satellites            
-                #region Satellites
-                // Foreign key between Satellite and Pit
-                Dictionary<string, DateTime> SatelliteLdtsForeignKeys = [];
-                foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(typeof(THub)!))
-                {
-                    if (
-                        prop.PropertyType.FullName!.Contains(typeof(THub)!.Namespace!) &&
-                        (prop.PropertyType.Name == "ICollection`1") &&
-                        prop.Name.StartsWith('S'))
-                    {
-                        // 1- new instance of Satellite
-                        var satellite = SpyIL.GetInstance(prop.PropertyType.GenericTypeArguments.First().FullName!);
-
-                        // 2- Insert key and hash
-                        SpyIL.SetAuditInfo<object>(ref satellite, hub.FindKey<THub>(), hashId);
-
-                        // 3.1- Inject audit infos to satellite
-                        SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadDts), LoadDts);
-                        SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadUser), LoadUser);
-                        SpyIL.SetAuditInfo<object>(ref satellite, nameof(ISatellite.SLoadSrc), LoadSrc);
-
-                        // 3.2- Save foreign key
-                        SatelliteLdtsForeignKeys.Add(
-                            ExtractShortNameSatellite
-                            (
-                                prop.PropertyType.GenericTypeArguments.First().Name,
-                                typeof(TEntityRelationnal).Name
-                            ),
-                            LoadDts);
-
-                        // 4- Load from Dto
-                        SpyIL.ChargerSatellite(ref satellite!, entity, typeof(THub).Namespace!);
-
-                        // 5- Insert into db
-                        Type typeSatellite = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == prop.PropertyType.GenericTypeArguments.First().FullName).First();
-
-                        var rowsSatelliteAffected = SqlConnection.Execute(
-                            @$"INSERT INTO [{typeSatellite.FindSchemaTableTarget()}].[{typeSatellite.FindTableTarget()}] VALUES ({typeSatellite.GetNamesColumns()})",
-                            satellite.ConvertToParamsRequest(typeSatellite),
-                            commandType: System.Data.CommandType.Text);
-
-                        if (rowsSatelliteAffected > 0)
-                            Log.Information("Insertion Satellite : OK");
-                        else
-                        {
-                            Log.Fatal("ERROR INSERT SATELLITE");
-                            throw new Exception("ERROR INSERT SATELLITE");
-                        }
-                    }
-                }
-                #endregion
-
-                // 4- insert into PIT
-                #region Point in time
-                foreach (PropertyDescriptor prop in TypeDescriptor.GetProperties(typeof(THub)!))
-                {
-                    if (
-                        prop.PropertyType.FullName!.Contains(typeof(THub)!.Namespace!) &&
-                        (prop.PropertyType.Name == "ICollection`1") &&
-                        prop.Name.StartsWith('P'))
-                    {
-                        // 1- new instance of PIT
-                        var pit = SpyIL.GetInstance(prop.PropertyType.GenericTypeArguments.First().FullName!);
-
-                        // 2- Insert key and hash
-                        SpyIL.SetAuditInfo<object>(ref pit, hub.FindKey<THub>(), hashId);
-
-                        // 3- Inject audit infos to pit
-                        SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadDts), LoadDts);
-                        SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadEndDts));
-                        SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadUser), LoadUser);
-                        SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadSrc), LoadSrc);
-
-                        // 4- Inject foreigns keys
-                        foreach (var kv in SatelliteLdtsForeignKeys)
-                            SpyIL.SetAuditInfo<object>(ref pit, kv.Key, kv.Value);
-
-                        // 5- Insert into db
-                        Type typePit = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == prop.PropertyType.GenericTypeArguments.First().FullName).First();
-
-                        var rowsPitAffected = SqlConnection.Execute(
-                            @$"INSERT INTO [{typePit.FindSchemaTableTarget()}].[{typePit.FindTableTarget()}] VALUES ({typePit.GetNamesColumns()})",
-                            pit.ConvertToParamsRequest(typePit),
-                            commandType: System.Data.CommandType.Text);
-
-                        if (rowsPitAffected > 0)
-                            Log.Information("Insertion Pit : OK");
-                        else
-                        {
-                            Log.Fatal("ERROR INSERT PIT");
-                            throw new Exception("ERROR INSERT PIT");
-                        }
-                    }
-                }
-                #endregion
-
-                // Inject functional key into entity
-                SpyIL.SetFunctionnalKey<TEntityRelationnal>(ref entity, functionnalKey);
-
-                // ALL OK => commit transaction
-                transactionScope.Complete();
+                Log.Fatal("ERROR INSERT SATELLITE");
+                throw new Exception("ERROR INSERT SATELLITE");
             }
-            catch (Exception ex)
+        }
+    }
+
+    /// <summary>
+    /// Add Pit
+    /// </summary>
+    /// <param name="entity"></param>
+    /// <param name="auditInformations"></param>
+    /// <param name="hashId"></param>
+    /// <param name="satelliteLdtsForeignKeys"></param>
+    /// <exception cref="Exception"></exception>
+    private void AddPit(ref TEntityRelationnal entity, AuditInformations auditInformations, string hashId, Dictionary<string, DateTime> satelliteLdtsForeignKeys)
+    {
+        var propPit = typeof(THub).GetListOfDv2Objects(DV2TypeObject.P).FirstOrDefault();
+        if (propPit != null)
+        {
+            // 1- new instance of PIT
+            var pit = SpyIL.GetInstance(propPit.FullName!);
+
+            // 2- Insert key and hash
+            SpyIL.SetAuditInfo<object>(ref pit, pit.FindKey(), hashId);
+
+            // 3- Inject audit infos to pit
+            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadDts), auditInformations.LoadDts);
+            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadEndDts));
+            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadUser), auditInformations.LoadUser);
+            SpyIL.SetAuditInfo<object>(ref pit, nameof(IPit.PLoadSrc), auditInformations.LoadSrc);
+
+            // 4- Inject foreigns keys
+            foreach (var kv in satelliteLdtsForeignKeys)
+                SpyIL.SetAuditInfo<object>(ref pit, kv.Key, kv.Value);
+
+            // 5- Insert into db
+            Type typePit = Assembly.GetEntryAssembly()!.GetTypes().Where(t => t.FullName == propPit.FullName).First();
+
+            var rowsPitAffected = SqlConnection.Execute(
+                @$"INSERT INTO [{typePit.FindSchemaTableTarget()}].[{typePit.FindTableTarget()}] VALUES ({typePit.GetNamesColumns()})",
+                pit.ConvertToParamsRequest(typePit),
+                commandType: System.Data.CommandType.Text);
+
+            if (rowsPitAffected > 0)
+                Log.Information("Insertion Pit : OK");
+            else
             {
-                Log.Fatal(ex.Message);
-                Console.WriteLine(ex.Message);
+                Log.Fatal("ERROR INSERT PIT");
+                throw new Exception("ERROR INSERT PIT");
             }
         }
+    }
 
-        /// <summary>
-        /// Get all
-        /// </summary>
-        /// <returns></returns>
-        public IEnumerable<TEntityRelationnal> GetAll()
+    /// <summary>
+    /// Add hub
+    /// </summary>
+    /// <param name="entity"></param>
+    /// <param name="auditInformations"></param>
+    /// <param name="functionnalKey"></param>
+    /// <param name="hashId"></param>
+    /// <exception cref="Exception"></exception>
+    private void AddHub(ref TEntityRelationnal entity, AuditInformations auditInformations, TFunctionalKeyType functionnalKey, string hashId)
+    {
+        var hub = Activator.CreateInstance(typeof(THub))! as THub;
+
+        // 2- Insert key and hash
+        SpyIL.SetAuditInfo<THub>(ref hub!, hub!.FindKey<THub>(), hashId);
+        SpyIL.SetAuditInfo<THub>(ref hub, entity.FindKey<TEntityRelationnal>(), functionnalKey);// Construction : TEntityRelationnal has one key : It's the same functionnal key in THub
+
+        // Inject audit infos to hub
+        SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadDts), auditInformations.LoadDts);
+        SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadUser), auditInformations.LoadUser);
+        SpyIL.SetAuditInfo<THub>(ref hub, nameof(IHub.HLoadSrc), auditInformations.LoadSrc);
+
+        // 3- insert into hub        
+        var rowsHubAffected = SqlConnection.Execute(
+            @$"INSERT INTO [{typeof(THub).FindSchemaTableTarget()}].[{typeof(THub).FindTableTarget()}] VALUES ({typeof(THub)!.GetNamesColumns()})",
+            hub.ConvertToParamsRequest(),
+            commandType: System.Data.CommandType.Text);
+
+        if (rowsHubAffected > 0)
+            Log.Information("Insertion HUB : OK");
+        else
         {
-            return SqlConnection.Query<TEntityRelationnal>(@$"SELECT * FROM [{typeof(THub).FindSchemaTableTarget()}].[v_{typeof(TEntityRelationnal).Name}]");
-        }
-
-        /// <summary>
-        /// Compute foreign key name
-        /// </summary>
-        /// <param name="satelliteName"></param>
-        /// <param name="HubName"></param>
-        /// <returns></returns>
-        private static string ExtractShortNameSatellite(string satelliteName, string HubName)
-        {
-            // Example : (SClientAdresse, Client) => SAdresseLdts
-
-            return $"{satelliteName.Replace(HubName, string.Empty)}Ldts";
+            Log.Fatal("ERROR INSERT HUB");
+            throw new Exception("ERROR INSERT HUB");
         }
     }
 }

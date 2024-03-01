@@ -8,37 +8,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CustomORM.Console.Entities.DV2;
 
-[Table("h_client")]
-public partial class HClient
+[Table("h_reclamation")]
+public partial class HReclamation
 {
     [Key]
-    [Column("h_client_hk")]
+    [Column("h_reclamation_hk")]
     [StringLength(64)]
-    public string HClientHk { get; set; }
+    public string HReclamationHk { get; set; }
 
     [Column("h_load_dts", TypeName = "datetime")]
     public DateTime HLoadDts { get; set; }
 
     [Required]
     [Column("h_load_user")]
+    [StringLength(10)]
     public string HLoadUser { get; set; }
 
     [Required]
     [Column("h_load_src")]
+    [StringLength(10)]
     public string HLoadSrc { get; set; }
 
-    [Column("no_client")]
-    public int NoClient { get; set; }
+    [Column("no_reclamation")]
+    public int NoReclamation { get; set; }
 
-    [InverseProperty("HClientHkNavigation")]
+    [InverseProperty("HReclamationHkNavigation")]
     public virtual ICollection<LClientReclamation> LClientReclamations { get; set; } = new List<LClientReclamation>();
 
-    [InverseProperty("HClientHkNavigation")]
-    public virtual ICollection<PClient> PClients { get; set; } = new List<PClient>();
+    [InverseProperty("HReclamationHkNavigation")]
+    public virtual ICollection<PReclamation> PReclamations { get; set; } = new List<PReclamation>();
 
-    [InverseProperty("HClientHkNavigation")]
-    public virtual ICollection<SClientAdresse> SClientAdresses { get; set; } = new List<SClientAdresse>();
-
-    [InverseProperty("HClientHkNavigation")]
-    public virtual ICollection<SClientIdentification> SClientIdentifications { get; set; } = new List<SClientIdentification>();
+    [InverseProperty("HReclamationHkNavigation")]
+    public virtual ICollection<SReclamationInfo> SReclamationInfos { get; set; } = new List<SReclamationInfo>();
 }

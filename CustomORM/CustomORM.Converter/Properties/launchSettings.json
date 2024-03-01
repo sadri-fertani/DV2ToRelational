@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "CustomORM.Converter": {
+      "commandName": "Project",
+      "commandLineArgs": "\"C:\\Users\\Sadri Fertani\\source\\github\\DV2ToRelational\\CustomORM\\CustomORM.Console\\Entities\\DV2\" \"C:\\Users\\Sadri Fertani\\source\\github\\DV2ToRelational\\CustomORM\\CustomORM.Console\\Entities\\Relationals\" \"CustomORM.Console.Entities.Relationals\""
+    }
+  }
+}
