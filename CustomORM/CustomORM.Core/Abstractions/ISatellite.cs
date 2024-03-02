@@ -1,6 +1,6 @@
-﻿namespace CustomORM.Abstractions;
+﻿namespace CustomORM.Core.Abstractions;
 
-public interface ISatellite
+internal interface ISatellite
 {
     public DateTime SLoadDts { get; set; }
 

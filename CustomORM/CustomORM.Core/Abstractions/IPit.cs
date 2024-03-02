@@ -1,6 +1,6 @@
-﻿namespace CustomORM.Abstractions;
+﻿namespace CustomORM.Core.Abstractions;
 
-public interface IPit
+internal interface IPit
 {
     public DateTime PLoadDts { get; set; }
 

@@ -1,4 +1,4 @@
-﻿using CustomORM.Abstractions;
+﻿using CustomORM.Core.Abstractions;
 using Dapper;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -19,7 +19,7 @@ public static class PropertiesExtractorExtensions
     /// </summary>
     /// <param name="className"></param>
     /// <returns></returns>
-    public static Dictionary<string, string> GetMappingNamesColumnsProperties(this Type className)
+    internal static Dictionary<string, string> GetMappingNamesColumnsProperties(this Type className)
     {
         var namespaceOfEntite = className.Namespace;
         var mapping = new Dictionary<string, string>();
@@ -42,7 +42,7 @@ public static class PropertiesExtractorExtensions
     /// </summary>
     /// <param name="className"></param>
     /// <returns></returns>
-    public static string GetNamesColumns(this Type className)
+    internal static string GetNamesColumns(this Type className)
     {
         var namespaceOfEntite = className.Namespace;
         List<string> columnsNames = [];
@@ -67,7 +67,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="obj"></param>
     /// <param name="type"></param>
     /// <returns></returns>
-    public static DynamicParameters ConvertToParamsRequest(this object obj, Type? type = null)
+    internal static DynamicParameters ConvertToParamsRequest(this object obj, Type? type = null)
     {
         var dbArgs = new DynamicParameters();
 
@@ -90,14 +90,14 @@ public static class PropertiesExtractorExtensions
         return dbArgs;
     }
 
-    public static object GetValue(this object obj, string propertyName)
+    internal static object GetValue(this object obj, string propertyName)
     {
         dynamic dyn = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
 
         return ((JValue)dyn[propertyName]).Value!;
     }
 
-    public static object? GetObjectProperty(this object obj, string propertyName)
+    internal static object? GetObjectProperty(this object obj, string propertyName)
     {
         var name = FindPropertyByAttribute(obj, propertyName);
 
@@ -109,6 +109,21 @@ public static class PropertiesExtractorExtensions
         }
 
         return null;
+    }
+
+    internal static PropertyDescriptorCollection GetPropertiesDescription(string fullName)
+    {
+        var pMethode1 = TypeDescriptor.GetProperties(Type.GetType(fullName)!);
+
+        if (pMethode1.Count > 0)
+            return pMethode1;
+
+        var types = Assembly.GetEntryAssembly()?.GetTypes();
+        var filteredType = types?.Where(t => t.FullName == fullName).First();
+
+        var pMethode2 = TypeDescriptor.GetProperties(filteredType!);
+
+        return pMethode2;
     }
 
     private static PropertyDescriptorCollection GetPropertiesDescription(this object obj)
@@ -164,14 +179,26 @@ public static class PropertiesExtractorExtensions
         throw new Exception("Error - construction object - no table associate");
     }
 
-    public static string FindKey<T>(this T obj)
+    /// <summary>
+    /// Find Key using object
+    /// </summary>
+    /// <typeparam name="T"></typeparam>
+    /// <param name="obj"></param>
+    /// <returns></returns>
+    internal static string FindKey<T>(this T obj)
     {
         return obj!
             .GetType()
             .FindKey();
     }
 
-    public static string FindKey(this Type type)
+    /// <summary>
+    /// Find Key using type
+    /// </summary>
+    /// <param name="type"></param>
+    /// <returns></returns>
+    /// <exception cref="Exception"></exception>
+    internal static string FindKey(this Type type)
     {
         var propertyAttributeKey = ((PropertyInfo[])((TypeInfo)type).DeclaredProperties).FirstOrDefault(p => p.GetCustomAttribute(typeof(KeyAttribute), true) != null);
 
@@ -188,7 +215,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="columnName"></param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
-    public static string FindColumnName(this Type type, string columnName)
+    internal static string FindColumnName(this Type type, string columnName)
     {
         var propertyAttributeColumn = ((PropertyInfo[])((TypeInfo)type).DeclaredProperties).FirstOrDefault(p => p.Name == columnName && p.GetCustomAttribute(typeof(ColumnAttribute), true) != null);
 
@@ -206,7 +233,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="obj"></param>
     /// <param name="value"></param>
     /// <exception cref="Exception"></exception>
-    public static void SetFunctionnalKey<T, TFunctionalKeyType>(ref T obj, TFunctionalKeyType value)
+    internal static void SetfunctionalKey<T, TFunctionalKeyType>(ref T obj, TFunctionalKeyType value)
     {
         // Force cast/convert
         dynamic eo = JsonConvert.DeserializeObject<object>(JsonConvert.SerializeObject(obj))!;
@@ -231,7 +258,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="Satellite"></param>
     /// <param name="dto"></param>
     /// <param name="namespaceOfEntite"></param>
-    public static void ChargerSatellite(ref object Satellite, object dto, string namespaceOfEntite)
+    internal static void ChargerSatellite(ref object Satellite, object dto, string namespaceOfEntite)
     {
         dynamic dynDto = dto;
 
@@ -257,7 +284,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="propertyTarget"></param>
     /// <param name="value"></param>
     /// <param name="allowNull"></param>
-    public static void SetObjectProperty<T>(ref T obj, string propertyTarget, object? value = null, bool allowNull = true)
+    internal static void SetObjectProperty<T>(ref T obj, string propertyTarget, object? value = null, bool allowNull = true)
     {
         if (value != null || (value == null && allowNull))
         {
@@ -275,7 +302,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="fullName"></param>
     /// <returns></returns>
     /// <exception cref="ArgumentNullException"></exception>
-    public static object GetInstance(string? fullName)
+    internal static object GetInstance(string? fullName)
     {
         if (fullName == null)
             throw new ArgumentNullException(nameof(fullName));
@@ -285,7 +312,7 @@ public static class PropertiesExtractorExtensions
             .GetTypes()?
             .Where(t => t.FullName == fullName)
             .First();
-        
+
         return Activator.CreateInstance(type!)!;
     }
 
@@ -295,7 +322,7 @@ public static class PropertiesExtractorExtensions
     /// <param name="T"></param>
     /// <param name="typeObject"></param>
     /// <returns></returns>
-    public static IEnumerable<Type> GetListOfChildrenObjects(this Type T, DV2TypeObject typeObject)
+    internal static IEnumerable<Type> GetListOfChildrenObjects(this Type T, DV2TypeObject typeObject)
     {
         List<Type> list = [];
 

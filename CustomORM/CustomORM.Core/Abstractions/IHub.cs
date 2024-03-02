@@ -1,6 +1,6 @@
-﻿namespace CustomORM.Abstractions;
+﻿namespace CustomORM.Core.Abstractions;
 
-public interface IHub
+internal interface IHub
 {
     public DateTime HLoadDts { get; set; }
 
