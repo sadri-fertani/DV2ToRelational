@@ -40,12 +40,7 @@ public static class Program
         Init();
 
         // Create object
-        var r1 = new Reclamation 
-        { 
-            NoReclamation = 0,
-            Contenu = "Reclamation de test 01",
-            Priorite = "H"
-        };
+
         var c1 = new Client
         {
             NoClient = 0,
@@ -64,6 +59,13 @@ public static class Program
             Langue = "AR"
         };
 
+        var r1 = new Reclamation
+        {
+            NoReclamation = 0,
+            Contenu = "Reclamation de test 01",
+            Priorite = "H"
+        };
+
         // Create a connection
         using (var connection = new SqlConnection(Config?.GetConnectionString("Default")))
         {
@@ -79,7 +81,6 @@ public static class Program
 
             foreach (var reclamation in reclamations)
                 System.Console.WriteLine($"{reclamation.NoReclamation} - {reclamation.Priorite} {reclamation.Contenu}");
-
 
             System.Console.WriteLine("-----------BEFORE INSERT-------------------");
             foreach (var client in clients)

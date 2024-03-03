@@ -2,11 +2,12 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 namespace CustomORM.Console.Entities.Relationals;
 
-public sealed class Client
+public partial class Client
 {
     [Key]
     public int NoClient { get; set; }
@@ -44,4 +45,7 @@ public sealed class Client
 
     [StringLength(16)]
     public string CodePostale { get; set; }
+
+    public virtual ICollection<Reclamation> Reclamations { get; set; } = new List<Reclamation>();
 }
+

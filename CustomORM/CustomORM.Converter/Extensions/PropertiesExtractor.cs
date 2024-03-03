@@ -1,15 +1,17 @@
-﻿namespace CustomORM.Converter.Extensions;
+﻿using System.Text.RegularExpressions;
 
-public static class PropertiesExtractor
+namespace CustomORM.Converter.Extensions;
+
+internal static class PropertiesExtractor
 {
-    public static string GetFunctionnalKeyProperty(List<string> hubProperties, List<string> viewProperties)
+    internal static string GetFunctionnalKeyProperty(List<string> hubProperties, List<string> viewProperties)
     {
         var commun = hubProperties.Intersect(viewProperties);
 
         return commun.First().ToString();
     }
 
-    public static List<string> GetProperties(IEnumerable<string> lines)
+    internal static List<string> GetProperties(IEnumerable<string> lines)
     {
         List<string> properties = [];
 
@@ -29,7 +31,27 @@ public static class PropertiesExtractor
         return properties;
     }
 
-    public static List<string> GetNoFunctionnalKeyProperties(List<string> hubProperties, List<string> viewProperties)
+    internal static List<string> GetLinkedObject(IEnumerable<string> lines, string entitySource)
+    {
+        List<string> linkedObjects = [];
+
+        foreach (var line in lines)
+        {
+            Match m = Regex.Match(line, "ICollection<L(.*?)>", RegexOptions.IgnoreCase);
+            if (m.Success)
+            {
+                // public virtual ICollection<LClientReclamation> LClientReclamations { get; set; } = new List<LClientReclamation>();
+                var target = m.Groups[1].Value.Replace(entitySource, string.Empty);
+                var targetProperty = target.EndsWith('s') ? target : $"{target}s";
+
+                linkedObjects.Add($"public virtual ICollection<{target}> {targetProperty} {{ get; set; }} = new List<{target}>();");
+            }
+        }
+
+        return linkedObjects;
+    }
+
+    internal static List<string> GetNoFunctionnalKeyProperties(List<string> hubProperties, List<string> viewProperties)
     {
         var functionalKeyProperty = GetFunctionnalKeyProperty(hubProperties, viewProperties);
 
@@ -38,7 +60,7 @@ public static class PropertiesExtractor
         return viewProperties;
     }
 
-    public static string? GetAnnotation(string property, IEnumerable<string> lines)
+    internal static string? GetAnnotation(string property, IEnumerable<string> lines)
     {
         var numLineProperty = lines.ToList<string>().FindIndex(l => l.Contains(property, StringComparison.OrdinalIgnoreCase));
 

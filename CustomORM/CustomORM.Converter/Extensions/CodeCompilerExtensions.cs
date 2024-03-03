@@ -7,9 +7,9 @@ using System.Reflection;
 
 namespace CustomORM.Converter.Extensions;
 
-public static class CodeCompilerExtensions
+internal static class CodeCompilerExtensions
 {
-    public static CSharpCompilation CompileAssembly(this string sourceCode)
+    internal static CSharpCompilation CompileAssembly(this string sourceCode)
     {
         // https://softwareparticles.com/how-to-dynamically-execute-code-in-net/
         var codeString = SourceText.From(sourceCode);
@@ -48,7 +48,7 @@ public static class CodeCompilerExtensions
             );
     }
 
-    public static void LogDiagnostics(this IEnumerable<Diagnostic> diagnostics)
+    internal static void LogDiagnostics(this IEnumerable<Diagnostic> diagnostics)
     {
         foreach (var diagnostic in diagnostics)
         {

@@ -1,12 +1,13 @@
 ﻿using CustomORM.Converter.Extensions;
 using Microsoft.CodeAnalysis;
+using System.IO;
 using System.Text;
 
 namespace CustomORM.Converter;
 
 internal static class Program
 {
-    static void Main(string[] args)
+    internal static void Main(string[] args)
     {
         if (args.Length < 2 || args.Length > 3)
             throw new ArgumentException("Check args");
@@ -15,102 +16,154 @@ internal static class Program
         string folderTarget = args[1];
         string namespaceTarget = args.Length < 3 ? string.Empty : args[2];
 
-        if (!Directory.Exists(folderSource))
-            throw new ArgumentException("Folder source not found");
+        // infos
+        Console.WriteLine("Inputs informations");
+        Console.WriteLine("-------------------");
+        Console.WriteLine($"Source folder : {folderSource}");
+        Console.WriteLine($"Target folder : {folderTarget}");
+        Console.WriteLine($"Namespace : {namespaceTarget}");
+        Console.WriteLine();
 
+        Task.Delay(500).Wait();
+
+        Console.Write("Check source folder : ");
+        Task.Delay(1500).Wait();
+        if (!Directory.Exists(folderSource))
+        {
+            Console.WriteLine("KO");
+            Console.Error.WriteLine("Folder source not found");
+            Environment.Exit(-1);
+        }
+        else
+            Console.WriteLine("OK");
+
+        Console.Write("Check target folder : ");
+        Task.Delay(1500).Wait();
         if (!Directory.Exists(folderTarget))
-            throw new ArgumentException("Folder target not found");
+        {
+            Console.WriteLine("KO");
+            Console.Error.WriteLine("Folder target not found");
+            Environment.Exit(-1);
+        }
+        else
+            Console.WriteLine("OK");
+
+        // clean target folder
+        Console.Write($"Clean target folder : ");
+        foreach (FileInfo file in new DirectoryInfo(folderTarget).GetFiles()) 
+            file.Delete();
+        Task.Delay(1500).Wait();
+        Console.WriteLine($"OK");
 
         // Find hubs
+        Console.Write("Check hubs : ");
+        Task.Delay(1000).Wait();
         var dv2FilesHubs = Directory.GetFiles(folderSource, "H*", SearchOption.TopDirectoryOnly);
+        var relationalEntities = new Dictionary<string, string>();
 
-        foreach (var dv2HubFile in dv2FilesHubs)
+        if (dv2FilesHubs.Any())
         {
-            var hubName = Path.GetFileNameWithoutExtension(dv2HubFile);
+            // hubs found
+            Console.WriteLine("OK");
 
-            // Find View for current hub
-            var dv2ViewFile = Path.Combine(folderSource, $"V{hubName[1..]}.cs");
-            if (!Path.Exists(dv2ViewFile))
-                throw new Exception($"View entity {$"V{hubName[1..]}.cs"} not found");
+            // Generate content of entity class (in memory)
+            foreach (var dv2HubFile in dv2FilesHubs)
+            {
+                var hubName = Path.GetFileNameWithoutExtension(dv2HubFile);
 
-            // Get class content
-            var contentEntityClass = BuildContentRelationalEntity(dv2HubFile, dv2ViewFile, hubName[1..], namespaceTarget);
+                // Find View for current hub
+                var dv2ViewFile = Path.Combine(folderSource, $"V{hubName[1..]}.cs");
+                Console.Write($"Check file V{hubName[1..]}.cs : ");
+                Task.Delay(500).Wait();
+                if (Path.Exists(dv2ViewFile))
+                    Console.WriteLine("OK");
+                else
+                {
+                    Console.WriteLine("KO");
+                    Environment.Exit(-1);
+                }
 
-            // check class
+                // Get class content
+                Console.Write($"Code for class {hubName[1..]} generation : ");
+                Task.Delay(750).Wait();
+                try
+                {
+                    relationalEntities.Add(hubName[1..], CodeGeneratorExtensions.GenerateCodeClassEntity(dv2HubFile, dv2ViewFile, hubName[1..]).ToString());
+                    Console.WriteLine("OK");
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine("KO");
+                    Console.Error.WriteLine(ex);
+                }
+            }
+
+            StringBuilder allClass = new StringBuilder();
+
+            allClass
+                .AddUsingReferences()
+                .AddNamespace(namespaceTarget);
+
+            foreach (var entity in relationalEntities)
+                allClass.AppendLine(entity.Value);
+
+            Console.Write($"Compile files : ");
+            Task.Delay(2500).Wait();
+            // check entity class (in memory)
             using (var peStream = new MemoryStream())
             {
-                var result = contentEntityClass
+                var result = allClass.ToString()
                     .CompileAssembly()
                     .Emit(peStream);
 
                 if (!result.Success)
                 {
-                    Console.WriteLine("Error on compilation.");
+                    Console.WriteLine("KO");
 
                     var failures = result.Diagnostics.Where(diagnostic => diagnostic.IsWarningAsError || diagnostic.Severity == DiagnosticSeverity.Error);
                     failures.LogDiagnostics();
                 }
                 else
                 {
-                    peStream.Seek(0, SeekOrigin.Begin);
+                    Console.WriteLine("OK");
 
-                    // save file (new class <=> relational entity)
-                    File.WriteAllText(Path.Combine(folderTarget, $"{hubName[1..]}.cs"), contentEntityClass);
-                    // info
-                    Console.WriteLine($"File {hubName[1..]}.cs generated");
+                    peStream.Seek(0, SeekOrigin.Begin);
+                }
+            }
+
+            // Save entity class
+            foreach (var entity in relationalEntities)
+            {
+                var currentClass = new StringBuilder();
+
+                currentClass
+                    .AddUsingReferences()
+                    .AddNamespace(namespaceTarget);
+
+                currentClass
+                    .AppendLine(entity.Value);
+
+                // save file (new class <=> relational entity)
+                Console.Write($"File {entity.Key}.cs generation : ");
+                Task.Delay(750).Wait();
+                try
+                {
+                    File.WriteAllText(Path.Combine(folderTarget, $"{entity.Key}.cs"), currentClass.ToString());
+                    Console.WriteLine("OK");
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine("KO");
+                    Console.Error.WriteLine(ex);
                 }
             }
         }
+        else
+            Console.WriteLine("KO");
 
+        Console.WriteLine();
+        Console.WriteLine("End");
         Console.WriteLine("Press key to close");
         Console.ReadLine();
-    }
-
-    private static string BuildContentRelationalEntity(string hubPath, string viewPath, string entityName, string namespaceTarget)
-    {
-        StringBuilder sb = new StringBuilder();
-
-        var hubLines = File.ReadLines(hubPath);
-        var viewLines = File.ReadLines(viewPath);
-        var hubProperties = PropertiesExtractor.GetProperties(hubLines);
-        var viewProperties = PropertiesExtractor.GetProperties(viewLines);
-        var functionalKeyProperty = PropertiesExtractor.GetFunctionnalKeyProperty(hubProperties, viewProperties);
-        var annotationKeyProperty = PropertiesExtractor.GetAnnotation(functionalKeyProperty, viewLines);
-
-        sb.AppendLine("// <auto-generated> This file has been auto generated by CustomORM.Converter. </auto-generated>");
-        sb.AppendLine("#nullable enable");
-        sb.AppendLine();
-        sb.AppendLine("using System;");
-        sb.AppendLine("using System.ComponentModel.DataAnnotations;");
-        sb.AppendLine();
-        if (namespaceTarget.Length > 0)
-        {
-            sb.AppendLine($"namespace {namespaceTarget};");
-            sb.AppendLine();
-        }
-        sb.AppendLine($"public sealed class {entityName}");
-        sb.AppendLine("{");
-        sb.AppendIndentedLine("[Key]");
-        if (annotationKeyProperty != null)
-            sb.AppendIndentedLine(annotationKeyProperty);
-        sb.AppendIndentedLine(functionalKeyProperty);
-        sb.AppendLine();
-
-        var noFunctionnalKeyProperties = PropertiesExtractor.GetNoFunctionnalKeyProperties(hubProperties, viewProperties);
-
-        foreach (var (property, index) in noFunctionnalKeyProperties.WithIndex())
-        {
-            var annotationProperty = PropertiesExtractor.GetAnnotation(property, viewLines);
-            if (annotationProperty != null)
-                sb.AppendIndentedLine(annotationProperty);
-            sb.AppendIndentedLine(property);
-
-            if (index != noFunctionnalKeyProperties.Count - 1)
-                sb.AppendLine();
-        }
-
-        sb.AppendLine("}");
-
-        return sb.ToString();
     }
 }

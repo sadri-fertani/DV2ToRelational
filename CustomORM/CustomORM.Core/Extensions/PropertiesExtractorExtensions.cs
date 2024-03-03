@@ -289,7 +289,10 @@ public static class PropertiesExtractorExtensions
         if (value != null || (value == null && allowNull))
         {
             var eo = JsonConvert.DeserializeObject<dynamic>(JsonConvert.SerializeObject(obj))!;
-            eo[propertyTarget] = value?.ToString();
+            if (value != null && value.GetType() == typeof(DateTime))
+                eo[propertyTarget] = (DateTime)value;
+            else
+                eo[propertyTarget] = value?.ToString();
 
             // Force cast/convert
             obj = JsonConvert.DeserializeObject<T>(JsonConvert.SerializeObject(eo))!;
